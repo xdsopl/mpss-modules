@@ -93,7 +93,9 @@ micvcons_create(int num_bds)
 	micvcons_tty->driver_name = MICVCONS_DEVICE_NAME;
 	micvcons_tty->name = MICVCONS_DEVICE_NAME;
 	micvcons_tty->major = 0;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0)
 	micvcons_tty->minor_num = num_bds;
+#endif
 	micvcons_tty->minor_start = 0;
 	micvcons_tty->type = TTY_DRIVER_TYPE_SERIAL;
 	micvcons_tty->subtype = SERIAL_TYPE_NORMAL;
