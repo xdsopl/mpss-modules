@@ -2804,7 +2804,11 @@ scif_mmap(struct vm_area_struct *vma, scif_epd_t epd)
 	 * the VMA is actually backed by physical pages in the remote
 	 * node's physical memory and not via a struct page.
 	 */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0)
 	vma->vm_flags |= VM_DONTCOPY | VM_DONTEXPAND | VM_RESERVED | VM_PFNMAP;
+#else
+	vma->vm_flags |= VM_DONTCOPY | VM_DONTEXPAND | VM_DONTDUMP | VM_IO | VM_PFNMAP;
+#endif
 
 	if (!is_self_scifdev(ep->remote_dev))
 		((vma)->vm_flags) |= VM_IO;
