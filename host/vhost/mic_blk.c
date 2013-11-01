@@ -474,8 +474,12 @@ static long vhost_blk_set_backend(struct vhost_blk *vblk)
 	writel(DISK_SEG_MAX, &vb_shared->blk_config.seg_max);
 	writel(SECTOR_SIZE, &vb_shared->blk_config.blk_size);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0)
 	ret = vfs_getattr(vblk->virtblk_file->f_path.mnt,
 					  vblk->virtblk_file->f_path.dentry, &stat);
+#else
+	ret = vfs_getattr(&vblk->virtblk_file->f_path, &stat);
+#endif
 	if (ret < 0)
 		goto _exit_;
 
