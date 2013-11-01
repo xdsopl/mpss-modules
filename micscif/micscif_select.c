@@ -41,6 +41,10 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
+#include <linux/version.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,9,0)
+#include <linux/sched/rt.h>
+#endif
 #include <linux/file.h>
 #include <linux/hrtimer.h>
 
