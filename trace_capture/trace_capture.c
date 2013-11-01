@@ -44,6 +44,7 @@
  * and dump their state, then dump all physical memeory.
  */
 
+#include <linux/module.h>
 #include "trace_capture.h"
 
 //#define DEBUG
