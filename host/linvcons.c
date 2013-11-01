@@ -339,9 +339,15 @@ micvcons_readchars(micvcons_port_t *port)
 		ret = micscif_rb_get_next(port->dp_in, buf, get_count, !IS_USER_BUFFER);
 		micscif_rb_update_read_ptr(port->dp_in);
 		if (port->dp_reader && port->dp_canread) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0)
 			bytes_read = tty_insert_flip_string(port->dp_tty, 
 								buf, get_count);
 			tty_flip_buffer_push(port->dp_tty);
+#else
+			struct tty_port *tp = port->dp_tty->port;
+			bytes_read = tty_insert_flip_string(tp, buf, get_count);
+			tty_flip_buffer_push(tp);
+#endif
 			bytes_total += bytes_read;
 			if (bytes_read != get_count) {
 				printk(KERN_WARNING "dropping characters: \
