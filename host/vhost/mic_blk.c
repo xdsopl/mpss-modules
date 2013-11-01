@@ -465,7 +465,11 @@ static long vhost_blk_set_backend(struct vhost_blk *vblk)
 	writel(
 		   (1U << VIRTIO_BLK_F_SEG_MAX) |
 		   (1U << VIRTIO_BLK_F_BLK_SIZE) |
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,6,0)
 		   (1U << VIRTIO_BLK_F_FLUSH),
+#else
+		   (1U << VIRTIO_BLK_F_WCE),
+#endif
 		   &vb_shared->host_features);
 	writel(DISK_SEG_MAX, &vb_shared->blk_config.seg_max);
 	writel(SECTOR_SIZE, &vb_shared->blk_config.blk_size);
