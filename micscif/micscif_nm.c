@@ -1535,7 +1535,9 @@ void micscif_watchdog_handler(struct work_struct *work)
 	}
 	case SYSTEM_BOOTING:
 	case SYSTEM_RUNNING:
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,5,0)
 	case SYSTEM_SUSPEND_DISK:
+#endif
 		break;
 	case 0xdead:
 		if (mic_crash_dump_enabled)
