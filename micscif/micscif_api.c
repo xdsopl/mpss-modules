@@ -2547,7 +2547,11 @@ unsigned int __scif_pollfd(struct file *f, poll_table *wait, struct endpt *ep)
 
 	/* Is it OK to use wait->key?? */
 	if (ep->state == SCIFEP_LISTENING) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0)
 		if (!wait || wait->key & SCIF_POLLIN) {
+#else
+		if (!wait || poll_requested_events(wait) & SCIF_POLLIN) {
+#endif
 			spin_unlock_irqrestore(&ep->lock, sflags);
 			poll_wait(f, &ep->conwq, wait);
 			spin_lock_irqsave(&ep->lock, sflags);
@@ -2559,7 +2563,11 @@ unsigned int __scif_pollfd(struct file *f, poll_table *wait, struct endpt *ep)
 		goto return_scif_poll;
 	}
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0)
 	if (!wait || wait->key & SCIF_POLLIN) {
+#else
+	if (!wait || poll_requested_events(wait) & SCIF_POLLIN) {
+#endif
 		if (ep->state != SCIFEP_CONNECTED &&
 		    ep->state != SCIFEP_LISTENING &&
 		    ep->state != SCIFEP_DISCONNECTED) {
@@ -2574,7 +2582,11 @@ unsigned int __scif_pollfd(struct file *f, poll_table *wait, struct endpt *ep)
 			mask |= SCIF_POLLIN;
 	}
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0)
 	if (!wait || wait->key & SCIF_POLLOUT) {
+#else
+	if (!wait || poll_requested_events(wait) & SCIF_POLLOUT) {
+#endif
 		if (ep->state != SCIFEP_CONNECTED &&
 		    ep->state != SCIFEP_LISTENING) {
 			mask |= SCIF_POLLERR;

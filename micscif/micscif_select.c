@@ -233,7 +233,11 @@ static void __pollwait(struct file *filp __attribute__((unused)), wait_queue_hea
 		return;
 	entry->filp = NULL;
 	entry->wait_address = wait_address;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0)
 	entry->key = p->key;
+#else
+	entry->key = poll_requested_events(p);
+#endif
 	init_waitqueue_func_entry(&entry->wait, pollwake);
 	entry->wait.private = pwq;
 	add_wait_queue(wait_address, &entry->wait);
