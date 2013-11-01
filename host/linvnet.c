@@ -201,7 +201,11 @@ static const struct net_device_ops veth_netdev_ops = {
 	.ndo_stop		= micveth_stop_dev,
 	.ndo_start_xmit		= micveth_xmit,
 	.ndo_validate_addr	= eth_validate_addr,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0)
 	.ndo_set_multicast_list = micveth_multicast_list,
+#else
+	.ndo_set_rx_mode	= micveth_multicast_list,
+#endif
 	.ndo_set_mac_address	= micveth_set_address,
 	.ndo_change_mtu		= micveth_change_mtu,
 };

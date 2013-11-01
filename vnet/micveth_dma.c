@@ -895,7 +895,11 @@ static const struct net_device_ops micvnet_netdev_ops = {
 	.ndo_stop		= micvnet_stop_dev,
 	.ndo_start_xmit		= micvnet_xmit,
 	.ndo_validate_addr	= eth_validate_addr,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0)
 	.ndo_set_multicast_list = micvnet_multicast_list,
+#else
+	.ndo_set_rx_mode	= micvnet_multicast_list,
+#endif
 	.ndo_set_mac_address	= micvnet_set_address,
 	.ndo_change_mtu		= micvnet_change_mtu,
 };
