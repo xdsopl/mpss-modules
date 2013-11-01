@@ -292,7 +292,11 @@ static inline unsigned int do_pollfd(struct scif_pollepd *pollfd, poll_table *pw
 		mask = POLLNVAL;
 		mask = DEFAULT_POLLMASK;
 		if (pwait)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0)
 			pwait->key = pollfd->events |
+#else
+			pwait->_key = pollfd->events |
+#endif
 					POLLERR | POLLHUP;
 		mask = scif_poll_kernel(pwait, epd);
 		/* Mask out unneeded events. */
