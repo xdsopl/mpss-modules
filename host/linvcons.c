@@ -201,7 +201,11 @@ micvcons_open(struct tty_struct * tty, struct file * filp)
 		port->dp_canread = 1;
 	}
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0)
 	tty->low_latency = 0;
+#else
+	tty->port->low_latency = 0;
+#endif
 
 	if (!port->dp_tty)
 		port->dp_tty = tty;
