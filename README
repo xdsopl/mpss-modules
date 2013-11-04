@@ -1,5 +1,14 @@
 WIP: This is a port of the mic module for the Intel Xeon Phi Coprocessor towards linux-3.11
 
+tested and working on linux-3.9.9
+
+for >=linux-3.10.0 there is much rewriting and rethinking to be done because
+of the procfs related changes .. stay tuned.
+
+to install, edit (if needed) and execute "install.sh"
+
+if you want to help test different kernel versions, read on:
+
 assuming that mps-modules is in your home directory, simply execute the
 build.sh script from the linux directory from which you configured and
 module_install'ed the version you like to compile the module for:
