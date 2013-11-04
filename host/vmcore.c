@@ -232,12 +232,7 @@ static ssize_t read_vmcore(struct file *file, char __user *buffer,
 	struct vmcore *curr_m = NULL;
 	struct inode *inode = file->f_path.dentry->d_inode;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
-	struct proc_dir_entry *entry = PDE(inode);
-	mic_ctx_t *mic_ctx = entry->data;
-#else
 	mic_ctx_t *mic_ctx = PDE_DATA(inode);
-#endif
 
 	if (buflen == 0 || *fpos >= mic_ctx->vmcore_size)
 		return 0;
