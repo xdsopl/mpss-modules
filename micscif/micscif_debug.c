@@ -486,20 +486,20 @@ static const struct file_operations scif_resume_fops = {
 	.release = single_release
 };
 
-static int
-scif_get_reg_cache_limit(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+static int scif_reg_cache_limit_show(struct seq_file *m, void *v)
 {
-	int l = 0;
-
-	l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
-			"reg_cache_limit = 0x%lx\n", ms_info.mi_rma_tc_limit);
-	*eof = 1;
-	return l;
+	seq_printf(m, "reg_cache_limit = 0x%lx\n", ms_info.mi_rma_tc_limit);
+	return 0;
 }
 
-static int
-scif_set_reg_cache_limit(struct file *file, const char __user *buffer,
-					unsigned long len, void *unused)
+static int scif_reg_cache_limit_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, scif_reg_cache_limit_show, PDE_DATA(inode));
+}
+
+static ssize_t
+scif_reg_cache_limit_write(struct file *file, const char __user *buffer,
+					size_t len, loff_t *unused)
 {
 	unsigned long data = 0;
 	char *p;
@@ -511,6 +511,15 @@ scif_set_reg_cache_limit(struct file *file, const char __user *buffer,
 	ms_info.mi_rma_tc_limit = data;
 	return len;
 }
+
+static const struct file_operations scif_reg_cache_limit_fops = {
+	.owner   = THIS_MODULE,
+	.open    = scif_reg_cache_limit_open,
+	.write   = scif_reg_cache_limit_write,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.release = single_release
+};
 
 #ifdef _MIC_SCIF_
 static int smpt_seq_show(struct seq_file *s, void *pos)
@@ -657,7 +666,6 @@ static struct file_operations log_buf_ops = {
 void
 scif_proc_init(void)
 {
-	struct proc_dir_entry *temp;
 	if ((scif_proc = proc_mkdir("scif", NULL)) != NULL) {
 		proc_create("ep", 0444, scif_proc, &scif_ep_fops);
 		proc_create("rma_window", 0444, scif_proc, &scif_rma_window_fops);
@@ -671,11 +679,7 @@ scif_proc_init(void)
 		proc_create("crash", 0444, scif_proc, &scif_crash_fops);
 		proc_create("bugon", 0444, scif_proc, &scif_bugon_fops);
 #endif
-		if ((temp = create_proc_entry("reg_cache_limit", S_IFREG | S_IRUGO | S_IWUGO, scif_proc))) {
-			temp->write_proc = scif_set_reg_cache_limit;
-			temp->read_proc = scif_get_reg_cache_limit;
-			temp->data = NULL;
-		}
+		proc_create("reg_cache_limit", S_IFREG | S_IRUGO | S_IWUGO, scif_proc, &scif_reg_cache_limit_fops);
 	}
 }
 
