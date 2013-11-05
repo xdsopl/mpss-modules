@@ -818,6 +818,10 @@ int vmcore_create(mic_ctx_t *mic_ctx)
 		}
 	}
 	if (mic_ctx->vmcore_dir)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
 		mic_ctx->vmcore_dir->size = mic_ctx->vmcore_size;
+#else
+		proc_set_size(mic_ctx->vmcore_dir, mic_ctx->vmcore_size);
+#endif
 	return 0;
 }
