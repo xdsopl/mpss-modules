@@ -1667,7 +1667,7 @@ static void adapter_dpc(unsigned long dpc)
 
 void ramoops_init(void)
 {
-	ramoops_dir = create_proc_entry("mic_ramoops", S_IFDIR | S_IRUGO, NULL);
+	ramoops_dir = proc_mkdir("mic_ramoops", NULL);
 }
 
 void ramoops_exit(void)
@@ -1699,7 +1699,7 @@ void ramoops_remove(mic_ctx_t *mic_ctx)
 
 void vmcore_init(void)
 {
-	vmcore_dir = create_proc_entry("mic_vmcore", S_IFDIR | S_IRUGO, NULL);
+	vmcore_dir = proc_mkdir("mic_vmcore", NULL);
 }
 
 void vmcore_exit(void)
