@@ -5,5 +5,5 @@ KERNEL=$(uname -r)
 ARCH=k1om
 
 make KERNEL_VERSION=$KERNEL MIC_CARD_ARCH=$ARCH
-make KERNEL_VERSION=$KERNEL MIC_CARD_ARCH=$ARCH sysconfdir=/etc includedir=/usr/include install
+sudo make KERNEL_VERSION=$KERNEL MIC_CARD_ARCH=$ARCH sysconfdir=/etc includedir=/usr/include install
 
