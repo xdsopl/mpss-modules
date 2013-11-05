@@ -594,7 +594,7 @@ void
 scif_proc_init(void)
 {
 	struct proc_dir_entry *temp;
-	if ((scif_proc = create_proc_entry("scif", S_IFDIR | S_IRUGO, NULL)) != NULL) {
+	if ((scif_proc = proc_mkdir("scif", NULL)) != NULL) {
 		create_proc_read_entry("ep", 0444, scif_proc, scif_ep_read, NULL);
 		create_proc_read_entry("rma_window", 0444, scif_proc, scif_rma_window_read, NULL);
 		create_proc_read_entry("rma_xfer", 0444, scif_proc, scif_rma_xfer_read, NULL);
