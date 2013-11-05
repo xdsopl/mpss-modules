@@ -367,85 +367,124 @@ static const struct file_operations scif_dev_info_fops = {
 	.release = single_release
 };
 
-static int
-scif_suspend(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+static int scif_suspend_show(struct seq_file *m, void *v)
 {
-	int l = 0;
-
 #ifdef _MIC_SCIF_
 	micscif_suspend_handler(NULL, 0, NULL);
 #else
 	{
 		int node;
 		uint64_t ret;
-		l += snprintf(buf + l, len - l > 0 ? len - l : 0,
-			      "Removing Nodes mask 0x7\n");
+		seq_printf(m, "Removing Nodes mask 0x7\n");
 		for (node = 0; node < ms_info.mi_total; node++) {
 			ret = micscif_disconnect_node(node, 0 , 1);
-			l += snprintf(buf + l, len - l > 0 ? len - l : 0,
-				      "Node %d requested disconnect. ret = %lld\n",
+			seq_printf(m, "Node %d requested disconnect. ret = %lld\n",
 				      node, ret);
 		}
 	}
 #endif
 
-	*eof = 1;
-	return l;
+	return 0;
 }
+
+static int scif_suspend_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, scif_suspend_show, PDE_DATA(inode));
+}
+
+static const struct file_operations scif_suspend_fops = {
+	.owner   = THIS_MODULE,
+	.open    = scif_suspend_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.release = single_release
+};
 
 #ifdef _MIC_SCIF_
-static int
-scif_crash(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+static int scif_crash_show(struct seq_file *m, void *v)
 {
-	int l = 0;
-	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
-		      "%s %d Crash the Card to test Lost Nodes\n", __func__, __LINE__);
+	seq_printf(m, "%s %d Crash the Card to test Lost Nodes\n", __func__, __LINE__);
 	panic("Test Lost Node! Crash the card intentionally\n");
-	*eof = 1;
-	return l;
+	return 0;
 }
 
-static int
-scif_bugon(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+static int scif_crash_open(struct inode *inode, struct file *file)
 {
-	int l = 0;
-	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
-		      "%s %d Bug on the Card to test Lost Nodes\n", __func__, __LINE__);
-	BUG_ON(1);
-	*eof = 1;
-	return l;
+	return single_open(file, scif_crash_show, PDE_DATA(inode));
 }
+
+static const struct file_operations scif_crash_fops = {
+	.owner   = THIS_MODULE,
+	.open    = scif_crash_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.release = single_release
+};
+
+static int scif_bugon_show(struct seq_file *m, void *v)
+{
+	seq_printf(m, "%s %d Bug on the Card to test Lost Nodes\n", __func__, __LINE__);
+	BUG_ON(1);
+	return 0;
+}
+
+static int scif_bugon_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, scif_bugon_show, PDE_DATA(inode));
+}
+
+static const struct file_operations scif_bugon_fops = {
+	.owner   = THIS_MODULE,
+	.open    = scif_bugon_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.release = single_release
+};
 #endif
 
-static int
-scif_fail_suspend(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+static int scif_fail_suspend_show(struct seq_file *m, void *v)
 {
-	int l = 0;
-
 #ifdef _MIC_SCIF_
 	micscif_fail_suspend_handler(NULL, 0, NULL);
-	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
-		      "Failing Suspend\n");
+	seq_printf(m, "Failing Suspend\n");
 #endif
-
-	*eof = 1;
-	return l;
+	return 0;
 }
 
-static int
-scif_resume(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+static int scif_fail_suspend_open(struct inode *inode, struct file *file)
 {
-	int l = 0;
+	return single_open(file, scif_fail_suspend_show, PDE_DATA(inode));
+}
 
+static const struct file_operations scif_fail_suspend_fops = {
+	.owner   = THIS_MODULE,
+	.open    = scif_fail_suspend_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.release = single_release
+};
+
+static int scif_resume_show(struct seq_file *m, void *v)
+{
 #ifdef _MIC_SCIF_
 	micscif_resume_handler(NULL, 0, NULL);
-	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
-		      "Resuming/Waking up node\n");
+	seq_printf(m, "Resuming/Waking up node\n");
 #endif
-
-	*eof = 1;
-	return l;
+	return 0;
 }
+
+static int scif_resume_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, scif_resume_show, PDE_DATA(inode));
+}
+
+static const struct file_operations scif_resume_fops = {
+	.owner   = THIS_MODULE,
+	.open    = scif_resume_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.release = single_release
+};
 
 static int
 scif_get_reg_cache_limit(char *buf, char **start, off_t offset, int len, int *eof, void *data)
@@ -625,12 +664,12 @@ scif_proc_init(void)
 		proc_create("rma_xfer", 0444, scif_proc, &scif_rma_xfer_fops);
 		proc_create("scif_dev", 0444, scif_proc, &scif_dev_info_fops);
 		proc_create("debug", 0444, scif_proc, &scif_debug_fops);
-		create_proc_read_entry("suspend", 0444, scif_proc, scif_suspend, NULL);
-		create_proc_read_entry("fail_suspend", 0444, scif_proc, scif_fail_suspend, NULL);
-		create_proc_read_entry("resume", 0444, scif_proc, scif_resume, NULL);
+		proc_create("suspend", 0444, scif_proc, &scif_suspend_fops);
+		proc_create("fail_suspend", 0444, scif_proc, &scif_fail_suspend_fops);
+		proc_create("resume", 0444, scif_proc, &scif_resume_fops);
 #ifdef _MIC_SCIF_
-		create_proc_read_entry("crash", 0444, scif_proc, scif_crash, NULL);
-		create_proc_read_entry("bugon", 0444, scif_proc, scif_bugon, NULL);
+		proc_create("crash", 0444, scif_proc, &scif_crash_fops);
+		proc_create("bugon", 0444, scif_proc, &scif_bugon_fops);
 #endif
 		if ((temp = create_proc_entry("reg_cache_limit", S_IFREG | S_IRUGO | S_IWUGO, scif_proc))) {
 			temp->write_proc = scif_set_reg_cache_limit;
