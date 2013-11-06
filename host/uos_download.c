@@ -1170,10 +1170,10 @@ static int ramoops_show(struct seq_file *m, void *v)
 	}
 
 	size = mic_ctx->ramoops_size;
-	if (seq_write(m, record, size)) {
-		spin_unlock_irqrestore(&mic_ctx->ramoops_lock, flags);
-		return -ENOMEM;
-	}
+	if (record[size-1] == 0)
+		size = strlen(record);
+
+	seq_write(m, record, size);
 
 	spin_unlock_irqrestore(&mic_ctx->ramoops_lock, flags);
 
