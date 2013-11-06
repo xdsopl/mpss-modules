@@ -367,23 +367,10 @@ static const struct file_operations scif_dev_info_fops = {
 	.release = single_release
 };
 
+#ifdef _MIC_SCIF_
 static int scif_suspend_show(struct seq_file *m, void *v)
 {
-#ifdef _MIC_SCIF_
 	micscif_suspend_handler(NULL, 0, NULL);
-#else
-	{
-		int node;
-		uint64_t ret;
-		seq_printf(m, "Removing Nodes mask 0x7\n");
-		for (node = 0; node < ms_info.mi_total; node++) {
-			ret = micscif_disconnect_node(node, 0 , 1);
-			seq_printf(m, "Node %d requested disconnect. ret = %lld\n",
-				      node, ret);
-		}
-	}
-#endif
-
 	return 0;
 }
 
@@ -400,7 +387,6 @@ static const struct file_operations scif_suspend_fops = {
 	.release = single_release
 };
 
-#ifdef _MIC_SCIF_
 static int scif_crash_show(struct seq_file *m, void *v)
 {
 	seq_printf(m, "%s %d Crash the Card to test Lost Nodes\n", __func__, __LINE__);
@@ -440,14 +426,11 @@ static const struct file_operations scif_bugon_fops = {
 	.llseek  = seq_lseek,
 	.release = single_release
 };
-#endif
 
 static int scif_fail_suspend_show(struct seq_file *m, void *v)
 {
-#ifdef _MIC_SCIF_
 	micscif_fail_suspend_handler(NULL, 0, NULL);
 	seq_printf(m, "Failing Suspend\n");
-#endif
 	return 0;
 }
 
@@ -466,10 +449,8 @@ static const struct file_operations scif_fail_suspend_fops = {
 
 static int scif_resume_show(struct seq_file *m, void *v)
 {
-#ifdef _MIC_SCIF_
 	micscif_resume_handler(NULL, 0, NULL);
 	seq_printf(m, "Resuming/Waking up node\n");
-#endif
 	return 0;
 }
 
@@ -485,6 +466,7 @@ static const struct file_operations scif_resume_fops = {
 	.llseek  = seq_lseek,
 	.release = single_release
 };
+#endif
 
 static int scif_reg_cache_limit_show(struct seq_file *m, void *v)
 {
@@ -672,10 +654,10 @@ scif_proc_init(void)
 		proc_create("rma_xfer", 0444, scif_proc, &scif_rma_xfer_fops);
 		proc_create("scif_dev", 0444, scif_proc, &scif_dev_info_fops);
 		proc_create("debug", 0444, scif_proc, &scif_debug_fops);
+#ifdef _MIC_SCIF_
 		proc_create("suspend", 0444, scif_proc, &scif_suspend_fops);
 		proc_create("fail_suspend", 0444, scif_proc, &scif_fail_suspend_fops);
 		proc_create("resume", 0444, scif_proc, &scif_resume_fops);
-#ifdef _MIC_SCIF_
 		proc_create("crash", 0444, scif_proc, &scif_crash_fops);
 		proc_create("bugon", 0444, scif_proc, &scif_bugon_fops);
 #endif
@@ -730,10 +712,10 @@ scif_proc_cleanup(void)
 		remove_proc_entry("rma_xfer", scif_proc);
 		remove_proc_entry("scif_dev", scif_proc);
 		remove_proc_entry("debug", scif_proc);
+#ifdef _MIC_SCIF_
 		remove_proc_entry("suspend", scif_proc);
 		remove_proc_entry("fail_suspend", scif_proc);
 		remove_proc_entry("resume", scif_proc);
-#ifdef _MIC_SCIF_
 		remove_proc_entry("crash", scif_proc);
 		remove_proc_entry("bugon", scif_proc);
 #endif
