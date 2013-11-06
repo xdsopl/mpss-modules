@@ -44,6 +44,7 @@
 extern "C" {
 #endif
 
+#include <linux/version.h>
 #include <linux/errno.h>
 #include <linux/hardirq.h>
 #include <linux/types.h>
@@ -93,6 +94,10 @@ extern "C" {
 
 #define GET_MAX(a, b)	( ((a) > (b)) ? (a) : (b) )
 #define GET_MIN(a, b)	( ((a) < (b)) ? (a) : (b) )
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
+#define PDE_DATA(inode) PDE(inode)->data
+#endif
 
 // System Interrupt Cause Read Register 0
 #define SBOX_SICR0_DBR(x)		((x) & 0xf)

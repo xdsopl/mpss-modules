@@ -1139,20 +1139,16 @@ mic_shutdown_host_doorbell_intr_handler(mic_ctx_t *mic_ctx, int doorbell)
 	return 0;
 }
 
-static int
-ramoops_read(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+static int ramoops_show(struct seq_file *m, void *v)
 {
-	uint64_t id = ((uint64_t)data) & 0xffffffff;
-	uint64_t entry = ((uint64_t)data) >> 32;
+	uint64_t data = (uint64_t)m->private;
+	uint64_t id = data & 0xffffffff;
+	uint64_t entry = data >> 32;
 	struct list_head *pos, *tmpq;
 	bd_info_t *bd = NULL;
 	mic_ctx_t *mic_ctx = NULL;
 	char *record;
-	char *end;
 	int size = 0;
-	int l = 0;
-	int left_to_read;
-	char *output;
 	unsigned long flags;
 
 	list_for_each_safe(pos, tmpq, &mic_data.dd_bdlist) {
@@ -1170,37 +1166,32 @@ ramoops_read(char *buf, char **start, off_t offset, int len, int *eof, void *dat
 	record = mic_ctx->ramoops_va[entry];
 	if (record == NULL) {
 		spin_unlock_irqrestore(&mic_ctx->ramoops_lock, flags);
-		*eof = 1;
 		return 0;
 	}
 
 	size = mic_ctx->ramoops_size;
-	end = record + size;
+	if (record[size-1] == 0)
+		size = strlen(record);
 
-	if ((output = kzalloc(size, GFP_ATOMIC)) == NULL) {
-		spin_unlock_irqrestore(&mic_ctx->ramoops_lock, flags);
-		return -ENOMEM;
-	}
-
-	while (record < end) {
-		l += snprintf(output + l, size - l, "%s", record);
-		record += PAGE_SIZE;
-	}
+	seq_write(m, record, size);
 
 	spin_unlock_irqrestore(&mic_ctx->ramoops_lock, flags);
 
-	left_to_read = l - offset;
-	if (left_to_read < 0)
-		left_to_read = 0;
-	if (left_to_read == 0)
-		*eof = 1;
-
-	left_to_read = min(len, left_to_read);
-	memcpy(buf, output + offset, left_to_read);
-	kfree(output);
-	*start = buf;
-	return left_to_read;
+	return 0;
 }
+
+static int ramoops_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, ramoops_show, PDE_DATA(inode));
+}
+
+static const struct file_operations ramoops_fops = {
+	.owner   = THIS_MODULE,
+	.open    = ramoops_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.release = single_release
+};
 
 int
 set_ramoops_pa(mic_ctx_t *mic_ctx)
@@ -1231,12 +1222,12 @@ ramoops_probe(mic_ctx_t *mic_ctx)
 		if (set_ramoops_pa(mic_ctx))
 			return;
 		snprintf(name, 64, "mic%d", mic_ctx->bi_id);
-		if (create_proc_read_entry(name, 0444, ramoops_dir, ramoops_read,
+		if (proc_create_data(name, 0444, ramoops_dir, &ramoops_fops,
 					   (void *)(long)mic_ctx->bi_id) == NULL)
 			printk("Failed to intialize /proc/mic_ramoops/%s\n", name);
 
 		snprintf(name, 64, "mic%d_prev", mic_ctx->bi_id);
-		if (create_proc_read_entry(name, 0444, ramoops_dir, ramoops_read,
+		if (proc_create_data(name, 0444, ramoops_dir, &ramoops_fops,
 					   (void *)((long)mic_ctx->bi_id | (1L << 32))) == NULL)
 			printk("Failed to intialize /proc/mic_ramoops/%s\n", name);
 	} else {
@@ -1667,7 +1658,7 @@ static void adapter_dpc(unsigned long dpc)
 
 void ramoops_init(void)
 {
-	ramoops_dir = create_proc_entry("mic_ramoops", S_IFDIR | S_IRUGO, NULL);
+	ramoops_dir = proc_mkdir("mic_ramoops", NULL);
 }
 
 void ramoops_exit(void)
@@ -1699,7 +1690,7 @@ void ramoops_remove(mic_ctx_t *mic_ctx)
 
 void vmcore_init(void)
 {
-	vmcore_dir = create_proc_entry("mic_vmcore", S_IFDIR | S_IRUGO, NULL);
+	vmcore_dir = proc_mkdir("mic_vmcore", NULL);
 }
 
 void vmcore_exit(void)

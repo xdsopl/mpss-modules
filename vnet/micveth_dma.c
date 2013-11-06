@@ -1511,7 +1511,7 @@ micvnet_stop_ws(struct work_struct *work)
 #if !defined(WINDOWS) && defined(HOST)
 static ssize_t
 show_vnet(struct device *dev, struct device_attribute *attr, char *buf);
-DEVICE_ATTR(vnet, S_IRUGO|S_IWUGO, show_vnet, NULL);
+DEVICE_ATTR(vnet, S_IRUGO, show_vnet, NULL);
 
 static ssize_t
 show_vnet(struct device *dev, struct device_attribute *attr, char *buf)

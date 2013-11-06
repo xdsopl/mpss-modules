@@ -44,6 +44,7 @@
 #include<linux/mm.h>
 #include<linux/kernel.h>
 #include<linux/interrupt.h>
+#include<linux/seq_file.h>
 #include<linux/proc_fs.h>
 #include<linux/bitops.h>
 #ifdef _MIC_SCIF_
@@ -1295,59 +1296,69 @@ module_init(mic_dma_init);
 module_exit(mic_dma_uninit);
 #endif
 
-static int
-mic_dma_proc_read_fn(char *buf, char **start, off_t offset, int count, int *eof, void *data)
+static int mic_dma_ring_show(struct seq_file *m, void *v)
 {
-	struct mic_dma_ctx_t *dma_ctx = data;
-	int i, len = 0;
+	struct mic_dma_ctx_t *dma_ctx = m->private;
+	int i;
 	struct compl_buf_ring *ring;
 
-	len += sprintf(buf + len, "Intr rings\n");
-	len += sprintf(buf + len, "%-10s%-12s%-12s%-12s%-25s%-18s%-25s\n",
+	seq_printf(m, "Intr rings\n");
+	seq_printf(m, "%-10s%-12s%-12s%-12s%-25s%-18s%-25s\n",
 		       "Chan", "Head", "Tail", "Size", "Tail loc", "Actual tail", "In Use");
 	for (i = first_dma_chan(); i <= last_dma_chan(); i++) {
 		ring = &dma_ctx->dma_channels[i].intr_ring.ring;
-		len += sprintf(buf + len, "%-#10x%-#12x%-#12x%-#12x%-#25llx%-#18x%-#18x\n",
+		seq_printf(m, "%-#10x%-#12x%-#12x%-#12x%-#25llx%-#18x%-#18x\n",
 			i, ring->head, ring->tail, ring->size,
 			ring->tail_location, *(int*)ring->tail_location,
 			atomic_read(&dma_ctx->dma_channels[i].flags));
 	}
-	len += sprintf(buf + len, "Poll rings\n");
-	len += sprintf(buf + len, "%-10s%-12s%-12s%-12s%-25s%-18s\n",
+	seq_printf(m, "Poll rings\n");
+	seq_printf(m, "%-10s%-12s%-12s%-12s%-25s%-18s\n",
 		       "Chan", "Head", "Tail", "Size", "Tail loc", "Actual tail");
 	for (i = first_dma_chan(); i <= last_dma_chan(); i++) {
 		ring = &dma_ctx->dma_channels[i].poll_ring;
-		len += sprintf(buf + len, "%-#10x%-#12x%-#12x%-#12x%-#25llx%-#18x\n",
+		seq_printf(m, "%-#10x%-#12x%-#12x%-#12x%-#25llx%-#18x\n",
 			       i, ring->head, ring->tail, ring->size,
 			       ring->tail_location, *(int*)ring->tail_location);
 	}
-	len += sprintf(buf + len, "Next_Write_Index\n");
-	len += sprintf(buf + len, "%-10s%-12s\n", "Chan", "Next_Write_Index");
+	seq_printf(m, "Next_Write_Index\n");
+	seq_printf(m, "%-10s%-12s\n", "Chan", "Next_Write_Index");
 	for (i = 0; i < MAX_NUM_DMA_CHAN; i++) {
-		len += sprintf(buf + len, "%-#10x%-#12llx\n",
+		seq_printf(m, "%-#10x%-#12llx\n",
 			       i, dma_ctx->dma_channels[i].next_write_index);
 	}
-	return len;
+	return 0;
 }
 
-static int
-mic_dma_proc_read_registers_fn(char *buf, char **start, off_t offset, int count,
-							   int *eof, void *data)
+static int mic_dma_ring_open(struct inode *inode, struct file *file)
 {
-	int i, j, chan_num, size, dtpr, len = 0;
-	struct mic_dma_ctx_t *dma_ctx = data;
+	return single_open(file, mic_dma_ring_show, PDE_DATA(inode));
+}
+
+static const struct file_operations mic_dma_ring_fops = {
+	.owner   = THIS_MODULE,
+	.open    = mic_dma_ring_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.release = single_release
+};
+
+static int mic_dma_reg_show(struct seq_file *m, void *v)
+{
+	int i, j, chan_num, size, dtpr;
+	struct mic_dma_ctx_t *dma_ctx = m->private;
 	struct mic_dma_device *dma_dev = &dma_ctx->dma_dev;
 	struct dma_channel *curr_chan;
 	union md_mic_dma_desc desc;
 
-	len += sprintf(buf + len, "========================================"
+	seq_printf(m, "========================================"
 				"=======================================\n");
-	len += sprintf(buf + len, "SBOX_DCR: %#x\n",
+	seq_printf(m, "SBOX_DCR: %#x\n",
 				mic_sbox_read_mmio(dma_dev->mm_sbox, SBOX_DCR));
-	len += sprintf(buf + len, "DMA Channel Registers\n");
-	len += sprintf(buf + len, "========================================"
+	seq_printf(m, "DMA Channel Registers\n");
+	seq_printf(m, "========================================"
 				"=======================================\n");
-	len += sprintf(buf + len, "%-10s| %-10s %-10s %-10s %-10s %-10s %-10s"
+	seq_printf(m, "%-10s| %-10s %-10s %-10s %-10s %-10s %-10s"
 #ifdef CONFIG_MK1OM
 				  " %-10s %-11s %-14s %-10s"
 #endif
@@ -1357,7 +1368,7 @@ mic_dma_proc_read_registers_fn(char *buf, char **start, off_t offset, int count,
 					"DSTATWB_LO", "DSTATWB_HI", "DSTAT_CHERR", "DSTAT_CHERRMSK",
 #endif
 					"DSTAT");
-	len += sprintf(buf + len, "========================================"
+	seq_printf(m, "========================================"
 				"=======================================\n");
 
 #ifdef _MIC_SCIF_
@@ -1367,7 +1378,7 @@ mic_dma_proc_read_registers_fn(char *buf, char **start, off_t offset, int count,
 #endif
 		curr_chan = &dma_ctx->dma_channels[i];
 		chan_num = curr_chan->ch_num;
-		len += sprintf(buf + len, "%-10i| %-#10x %-#10x %-#10x %-#10x"
+		seq_printf(m, "%-10i| %-#10x %-#10x %-#10x %-#10x"
 			" %-#10x"
 #ifdef CONFIG_MK1OM
 			" %-#10x %-#11x %-#10x %-#14x"
@@ -1387,15 +1398,15 @@ mic_dma_proc_read_registers_fn(char *buf, char **start, off_t offset, int count,
 			md_mic_dma_read_mmio(dma_dev, chan_num, REG_DSTAT));
 	}
 
-	len += sprintf(buf + len, "\nDMA Channel Descriptor Rings\n");
-	len += sprintf(buf + len, "========================================"
+	seq_printf(m, "\nDMA Channel Descriptor Rings\n");
+	seq_printf(m, "========================================"
 				"=======================================\n");
 
 	for (i = first_dma_chan(); i <= last_dma_chan(); i++) {
 		curr_chan = &dma_ctx->dma_channels[i];
 		chan_num = curr_chan->ch_num;
 		dtpr = md_mic_dma_read_mmio(dma_dev, chan_num, REG_DTPR);
-		len += sprintf(buf + len,  "Channel %i: [", chan_num);
+		seq_printf(m,  "Channel %i: [", chan_num);
 		size = ((int) md_mic_dma_read_mmio(dma_dev, chan_num, REG_DHPR)
 			- dtpr) % curr_chan->chan->num_desc_in_ring;
 		/*
@@ -1411,31 +1422,31 @@ mic_dma_proc_read_registers_fn(char *buf, char **start, off_t offset, int count,
 
 			switch (desc.desc.nop.type){
 			case NOP:
-				len += sprintf(buf + len," {Type: NOP, 0x%#llx"
+				seq_printf(m," {Type: NOP, 0x%#llx"
 					" %#llx} ",  desc.qwords.qw0,
 						   desc.qwords.qw1);
 			case MEMCOPY:
-				len += sprintf(buf + len," {Type: MEMCOPY, SAP:"
+				seq_printf(m," {Type: MEMCOPY, SAP:"
 					" 0x%#llx, DAP: %#llx, length: %#llx} ",
 					  (uint64_t) desc.desc.memcopy.sap,
 					  (uint64_t) desc.desc.memcopy.dap,
 					  (uint64_t) desc.desc.memcopy.length);
 				break;
 			case STATUS:
-				len += sprintf(buf + len," {Type: STATUS, data:"
+				seq_printf(m," {Type: STATUS, data:"
 					" 0x%#llx, DAP: %#llx, intr: %lli} ",
 					(uint64_t) desc.desc.status.data,
 					(uint64_t) desc.desc.status.dap,
 					(uint64_t) desc.desc.status.intr);
 				break;
 			case GENERAL:
-				len += sprintf(buf + len," {Type: GENERAL, "
+				seq_printf(m," {Type: GENERAL, "
 					"DAP: %#llx, dword: %#llx} ",
 					(uint64_t) desc.desc.general.dap,
 					(uint64_t) desc.desc.general.data);
 				break;
 			case KEYNONCECNT:
-				len += sprintf(buf + len," {Type: KEYNONCECNT, sel: "
+				seq_printf(m," {Type: KEYNONCECNT, sel: "
 					"%lli, h: %lli, index: %lli, cs: %lli,"
 					" value: %#llx} ",
 						(uint64_t) desc.desc.keynoncecnt.sel,
@@ -1445,46 +1456,50 @@ mic_dma_proc_read_registers_fn(char *buf, char **start, off_t offset, int count,
 						(uint64_t) desc.desc.keynoncecnt.data);
 				break;
 			case KEY:
-				len += sprintf(buf + len," {Type: KEY, dest_ind"
+				seq_printf(m," {Type: KEY, dest_ind"
 					   "ex: %lli, ski: %lli, skap: %#llx ",
 						(uint64_t) desc.desc.key.di,
 						(uint64_t) desc.desc.key.ski,
 						(uint64_t) desc.desc.key.skap);
 				break;
 			default:
-				len += sprintf(buf + len," {Uknown Type=%lli ,"
+				seq_printf(m," {Uknown Type=%lli ,"
 				 "%#llx %#llx} ",(uint64_t)  desc.desc.nop.type,
 						(uint64_t) desc.qwords.qw0,
 						(uint64_t) desc.qwords.qw1);
 			}
 		}
-		len += sprintf(buf + len,  "]\n");
+		seq_printf(m,  "]\n");
 		if (mic_hw_family(dma_ctx->device_num) == FAMILY_KNC &&
 		    mic_hw_stepping(dma_ctx->device_num) >= KNC_B0_STEP &&
 		    curr_chan->chan->dstat_wb_loc)
-			len += sprintf(buf + len, "DSTAT_WB = 0x%x\n",
+			seq_printf(m, "DSTAT_WB = 0x%x\n",
 				*((uint32_t*)curr_chan->chan->dstat_wb_loc));
 	}
-	return len;
+	return 0;
 }
+
+static int mic_dma_reg_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, mic_dma_reg_show, PDE_DATA(inode));
+}
+
+static const struct file_operations mic_dma_reg_fops = {
+	.owner   = THIS_MODULE,
+	.open    = mic_dma_reg_open,
+	.read    = seq_read,
+	.llseek  = seq_lseek,
+	.release = single_release
+};
 
 static void
 mic_dma_proc_init(struct mic_dma_ctx_t *dma_ctx)
 {
-	struct proc_dir_entry *dma_proc;
 	char name[64];
-
 	snprintf(name, 63, "%s%d", proc_dma_ring, dma_ctx->device_num);
-	if ((dma_proc = create_proc_entry(name,  S_IFREG | S_IRUGO, NULL)) != NULL) {
-		dma_proc->read_proc = mic_dma_proc_read_fn;
-		dma_proc->data      = dma_ctx;
-	}
+	proc_create_data(name,  S_IFREG | S_IRUGO, NULL, &mic_dma_ring_fops, dma_ctx);
 	snprintf(name, 63, "%s%d", proc_dma_reg, dma_ctx->device_num);
-	if ((dma_proc = create_proc_entry(name, S_IFREG | S_IRUGO, NULL)) != NULL) {
-		dma_proc->read_proc = mic_dma_proc_read_registers_fn;
-		dma_proc->data      = dma_ctx;
-	}
-
+	proc_create_data(name,  S_IFREG | S_IRUGO, NULL, &mic_dma_reg_fops, dma_ctx);
 }
 
 static void
