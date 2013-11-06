@@ -1,9 +1,11 @@
 This is a port of the mic module for the Intel Xeon Phi Coprocessor for linux-3.11
 
-please checkout "devel" branch for >=linux-3.10.0 support.
-beware, as it needs some more testing and bug squashing.
+this is the "minimal" branch, which only has small fixes to make it run on
+a newer kernel.
 
-"master" branch tested and working on linux-3.9.9
+rewrites can be found in the untested "devel" or tested "master" branch.
+
+"minimal" branch tested and working on linux-3.9.9
 
 to install, edit (if needed) and execute "install.sh"
 
