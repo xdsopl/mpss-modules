@@ -219,11 +219,11 @@ micras_mc_log(struct mce_info * event)
 **       reliably at 400 kHz, so we switched to 100 kHz.
 */
 
-#define	REG_DBG		0	/* Debug I2C Layer 1 */
-#define	I2C_DBG		0	/* Debug I2C Layer 2 */
-#define	XFR_DBG		0	/* Debug I2C Layer 3 */
-#define	CON_DBG		0	/* Debug I2C UART */
-#define	EPR_DBG		0	/* Debug EEPROM log */
+#define	REG_DBG		1	/* Debug I2C Layer 1 */
+#define	I2C_DBG		1	/* Debug I2C Layer 2 */
+#define	XFR_DBG		1	/* Debug I2C Layer 3 */
+#define	CON_DBG		1	/* Debug I2C UART */
+#define	EPR_DBG		1	/* Debug EEPROM log */
 
 #if REG_DBG
 #define REG_REG			reg_dmp
@@ -1762,13 +1762,8 @@ cons_putc(int c)
  *  This can happen when/if ee_print() is used.
  */
 
-#ifdef CONFIG_I2C_PXA
-extern atomic_t pxa_block;
-extern char	pxa_state;
-#else
 atomic_t pxa_block = ATOMIC_INIT(0);
 char	 pxa_state = '-';
-#endif
 
 static void
 ee_lock(void)

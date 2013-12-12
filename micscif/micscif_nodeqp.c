@@ -513,7 +513,7 @@ int micscif_setuphost_response(struct micscif_dev *scifdev, uint64_t payload)
 	/* re-recieve the bootstrap message after re-init call */
 	pr_debug("micscif_host(): reading INIT message after re-init call\n");
 	read_size = micscif_rb_get_next(&(scifdev->qpairs[0].inbound_q), &msg,
-		sizeof(struct nodemsg), !IS_USER_BUFFER);
+		sizeof(struct nodemsg));
 	micscif_rb_update_read_ptr(&(scifdev->qpairs[0].inbound_q));
 
 	scifdev->sd_rdmasr = (uint32_t)msg.payload[1];
@@ -723,7 +723,7 @@ int micscif_nodeqp_send(struct micscif_dev *scifdev,
 	spin_lock(&qp->qp_send_lock);
 
 	while ((err = micscif_rb_write(&qp->outbound_q,
-			msg, sizeof(struct nodemsg), !IS_USER_BUFFER))) {
+			msg, sizeof(struct nodemsg)))) {
 		cpu_relax();
 		mdelay(1);
 		if (loop_cnt++ > (NODEQP_SEND_TO_MSEC)) {
@@ -2779,7 +2779,7 @@ micscif_nodeqp_intrhandler(struct micscif_dev *scifdev, struct micscif_qp *qp)
 		if (SCIFDEV_STOPPED == scifdev->sd_state)
 			return 0;
 		read_size = micscif_rb_get_next(&qp->inbound_q, &msg,
-							sizeof(msg), !IS_USER_BUFFER);
+							sizeof(msg));
 		/* Stop handling messages if an oops is in progress */
 		if (read_size != sizeof(msg) || oops_in_progress)
 			break;
@@ -2898,7 +2898,7 @@ micscif_loopb_msg_handler(struct micscif_dev *scifdev, struct micscif_qp *qp)
 		}
 
 		read_size = micscif_rb_get_next(&qp->inbound_q, &msg->msg,
-				sizeof(struct nodemsg), !IS_USER_BUFFER);
+				sizeof(struct nodemsg));
 
 		if (read_size != sizeof(struct nodemsg)) {
 			kfree(msg);

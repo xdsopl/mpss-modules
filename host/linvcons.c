@@ -336,7 +336,7 @@ micvcons_readchars(micvcons_port_t *port)
 		if (!len)
 			break;
 		get_count = min(len, (int)sizeof(buf));
-		ret = micscif_rb_get_next(port->dp_in, buf, get_count, !IS_USER_BUFFER);
+		ret = micscif_rb_get_next(port->dp_in, buf, get_count);
 		micscif_rb_update_read_ptr(port->dp_in);
 		if (port->dp_reader && port->dp_canread) {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0)
@@ -560,7 +560,7 @@ int micvcons_port_write(struct micvcons_port *port, const unsigned char *buf,
 
 	if (port->dp_out) {
 		bytes = min(count, micscif_rb_space(port->dp_out));
-		ret = micscif_rb_write(port->dp_out, (void *)buf, bytes, !IS_USER_BUFFER);
+		ret = micscif_rb_write(port->dp_out, (void *)buf, bytes);
 		BUG_ON(ret);
 		port->dp_bytes += bytes;
 		micscif_rb_commit(port->dp_out);

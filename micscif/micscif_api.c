@@ -1195,7 +1195,6 @@ err_ret:
  * @msg:	Address to place data
  * @len:	Length to receive
  * @flags:	Syncronous or asynchronous access
- * @fromuser: the package is from userspace or kernel
  *
  * This function sends a packet of data to the queue * created by the
  * connection establishment sequence.  It returns when the packet has
@@ -1208,7 +1207,7 @@ err_ret:
  * This function may be interrupted by a signal and will return -EINTR.
  */
 int
-_scif_send(scif_epd_t epd, void *msg, int len, int flags, bool fromuser)
+_scif_send(scif_epd_t epd, void *msg, int len, int flags)
 {
 	struct endpt *ep = (struct endpt *)epd;
 	struct nodemsg notif_msg;
@@ -1263,7 +1262,7 @@ _scif_send(scif_epd_t epd, void *msg, int len, int flags, bool fromuser)
 			 */
 			curr_xfer_len = min(len - sent_len, write_count);
 			ret = micscif_rb_write(&ep->qp_info.qp->outbound_q, msg,
-						(uint32_t)curr_xfer_len, fromuser);
+						(uint32_t)curr_xfer_len);
 			if (ret < 0) {
 				ret = -EFAULT;
 				goto unlock_dec_return;
@@ -1386,7 +1385,7 @@ dec_return:
  * This function may be interrupted by a signal and will return -EINTR.
  */
 int
-_scif_recv(scif_epd_t epd, void *msg, int len, int flags, bool touser)
+_scif_recv(scif_epd_t epd, void *msg, int len, int flags)
 {
 	int read_size;
 	struct endpt *ep = (struct endpt *)epd;
@@ -1420,7 +1419,7 @@ _scif_recv(scif_epd_t epd, void *msg, int len, int flags, bool touser)
 			curr_recv_len = min(remaining_len, read_count);
 			read_size = micscif_rb_get_next(
 					&ep->qp_info.qp->inbound_q,
-					msg, (int) curr_recv_len, touser);
+					msg, (int) curr_recv_len);
 			if (read_size < 0){
 				/* only could happen when copy to USER buffer
 				*/
@@ -1505,6 +1504,7 @@ dec_return:
 	return ret;
 }
 
+
 /**
  * scif_user_send() - Send data to connection queue
  * @epd:        The end point address returned from scif_open()
@@ -1520,8 +1520,10 @@ scif_user_send(scif_epd_t epd, void *msg, int len, int flags)
 {
 	struct endpt *ep = (struct endpt *)epd;
 	int err = 0;
-	bool isUserBuf = IS_USER_BUFFER;
-
+	int sent_len = 0;
+	char *tmp;
+	int loop_len;
+	int chunk_len = min(len, (1 << (MAX_ORDER + PAGE_SHIFT - 1)));;
 	pr_debug("SCIFAPI send (U): ep %p %s\n", ep, scif_ep_states[ep->state]);
 
 	if (!len)
@@ -1530,7 +1532,11 @@ scif_user_send(scif_epd_t epd, void *msg, int len, int flags)
 	if ((err = scif_msg_param_check(epd, len, flags)))
 		goto send_err;
 
-
+	if (!(tmp = kmalloc(chunk_len, GFP_KERNEL))) {
+		err = -ENOMEM;
+		goto send_err;
+	}
+	err = 0;
 	micscif_inc_node_refcnt(ep->remote_dev, 1);
 	/*
 	 * Grabbing the lock before breaking up the transfer in
@@ -1538,14 +1544,30 @@ scif_user_send(scif_epd_t epd, void *msg, int len, int flags)
 	 * not get fragmented and reordered.
 	 */
 	mutex_lock(&ep->sendlock);
-
-	err = _scif_send(epd, msg, len, flags, isUserBuf);
-
+	
+	while (sent_len != len) {
+		msg = (void *)((char *)msg + err);
+		loop_len = len - sent_len;
+		loop_len = min(chunk_len, loop_len);
+		if (copy_from_user(tmp, msg, loop_len)) {
+			err = -EFAULT;
+			goto send_free_err;
+		}
+		err = _scif_send(epd, (void *)tmp, loop_len, flags);
+		if (err < 0) {
+			goto send_free_err;
+		}
+		sent_len += err;
+		if (err !=loop_len) {
+			goto send_free_err;
+		}
+	}
+send_free_err:
 	mutex_unlock(&ep->sendlock);
 	micscif_dec_node_refcnt(ep->remote_dev, 1);
-
+	kfree(tmp);
 send_err:
-	return err;
+	return err < 0 ? err : sent_len;
 }
 
 /**
@@ -1563,8 +1585,10 @@ scif_user_recv(scif_epd_t epd, void *msg, int len, int flags)
 {
 	struct endpt *ep = (struct endpt *)epd;
 	int err = 0;
-	bool isUserBuf = IS_USER_BUFFER;
-
+	int recv_len = 0;
+	char *tmp;
+	int loop_len;
+	int chunk_len = min(len, (1 << (MAX_ORDER + PAGE_SHIFT - 1)));;
 	pr_debug("SCIFAPI recv (U): ep %p %s\n", ep, scif_ep_states[ep->state]);
 
 	if (!len)
@@ -1573,6 +1597,11 @@ scif_user_recv(scif_epd_t epd, void *msg, int len, int flags)
 	if ((err = scif_msg_param_check(epd, len, flags)))
 		goto recv_err;
 
+	if (!(tmp = kmalloc(chunk_len, GFP_KERNEL))) {
+		err = -ENOMEM;
+		goto recv_err;
+	}
+	err = 0;
 	/*
 	 * Grabbing the lock before breaking up the transfer in
 	 * multiple chunks is required to ensure that messages do
@@ -1580,12 +1609,26 @@ scif_user_recv(scif_epd_t epd, void *msg, int len, int flags)
 	 */
 	mutex_lock(&ep->sendlock);
 
-	err = _scif_recv(epd, msg, len, flags, isUserBuf);
-
+	while (recv_len != len) {
+		msg = (void *)((char *)msg + err);
+		loop_len = len - recv_len;
+		loop_len = min(chunk_len, loop_len);
+		if ((err = _scif_recv(epd, tmp, loop_len, flags)) < 0)
+			goto recv_free_err;
+		if (copy_to_user(msg, tmp, err)) {
+			err = -EFAULT;
+			goto recv_free_err;
+		}
+		recv_len += err;
+		if (err !=loop_len) {
+			goto recv_free_err;
+		}
+	}
+recv_free_err:
 	mutex_unlock(&ep->sendlock);
-
+	kfree(tmp);
 recv_err:
-	return err;
+	return err < 0 ? err : recv_len;
 }
 
 #ifdef SCIF_BLAST
@@ -1656,7 +1699,7 @@ __scif_send(scif_epd_t epd, void *msg, int len, int flags)
 	if (flags & SCIF_SEND_BLOCK)
 		mutex_lock(&ep->sendlock);
 
-	ret = _scif_send(epd, msg, len, flags, !IS_USER_BUFFER);
+	ret = _scif_send(epd, msg, len, flags);
 
 	if (flags & SCIF_SEND_BLOCK)
 		mutex_unlock(&ep->sendlock);
@@ -1719,7 +1762,7 @@ __scif_recv(scif_epd_t epd, void *msg, int len, int flags)
 	if (flags & SCIF_RECV_BLOCK)
 		mutex_lock(&ep->recvlock);
 
-	ret = _scif_recv(epd, msg, len, flags, !IS_USER_BUFFER);
+	ret = _scif_recv(epd, msg, len, flags);
 
 	if (flags & SCIF_RECV_BLOCK)
 		mutex_unlock(&ep->recvlock);
