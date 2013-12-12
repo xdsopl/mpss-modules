@@ -102,7 +102,7 @@ static int hvc_mic_get_chars(uint32_t vt, char *buf, int count)
 
 	len = micscif_rb_count(&mic_in_buf, count);
 	get_count = min(len, count);
-	ret = micscif_rb_get_next(&mic_in_buf, buf, get_count, !IS_USER_BUFFER);
+	ret = micscif_rb_get_next(&mic_in_buf, buf, get_count);
 	if (ret == get_count)
 		micscif_rb_update_read_ptr(&mic_in_buf);
 
@@ -119,7 +119,7 @@ static int hvc_mic_put_chars(uint32_t vt, const char *buf, int count)
 	
 	put_count = min(micscif_rb_space(&mic_out_buf), count);
 	if (put_count) {
-		ret = micscif_rb_write(&mic_out_buf, (void *)buf, put_count,!IS_USER_BUFFER);
+		ret = micscif_rb_write(&mic_out_buf, (void *)buf, put_count);
 		BUG_ON(ret);
 		micscif_rb_commit(&mic_out_buf);
 	} else if (*host_status != MIC_VCONS_HOST_OPEN)
@@ -303,7 +303,7 @@ static void __exit hvc_mic_exit(void)
 	do {
 		len = micscif_rb_count(&mic_in_buf, sizeof(buf));
 		ret = micscif_rb_get_next(&mic_in_buf, buf,
-				min(len, (int)sizeof(buf)), !IS_USER_BUFFER);
+				min(len, (int)sizeof(buf)));
 	} while (ret > 0);
 
 	iounmap(vcons_info.hdr);

@@ -100,58 +100,34 @@ EXPORT_SYMBOL(micscif_rb_reset);
 
 /* Copies a message to the ring buffer -- handles the wrap around case */
 static int memcpy_torb(struct micscif_rb *rb, void *header,
-			void *msg, uint32_t size , bool fromuser)
+			void *msg, uint32_t size)
 {
 	/* Need to call two copies if it wraps around */
 	uint32_t size1, size2;
 	if ((char*)header + size >= (char*)rb->rb_base + rb->size) {
 		size1 = (uint32_t) ( ((char*)rb->rb_base + rb->size) - (char*)header);
 		size2 = size - size1;
-		if (!fromuser) {
-		    memcpy_toio(header, msg, size1);
-		    memcpy_toio(rb->rb_base, (char*)msg+size1, size2);
-		} else {
-			if (copy_from_user((void*)header, msg, size1))
-				return -EFAULT;
-			if (copy_from_user((void*)rb->rb_base, (char *)msg+size1, size2))
-				return -EFAULT;
-		}
+		memcpy_toio(header, msg, size1);
+		memcpy_toio(rb->rb_base, (char*)msg+size1, size2);
 	} else {
-		if (!fromuser) {
-			memcpy_toio(header, msg, size);
-		}else {
-			if(copy_from_user((void*)header, msg, size))
-				return -EFAULT;
-		}
+		memcpy_toio(header, msg, size);
 	}
 	return 0;
 }
 
 /* Copies a message from the ring buffer -- handles the wrap around case */
 static int memcpy_fromrb(struct micscif_rb *rb, void *header,
-			void *msg, uint32_t size, bool touser)
+			void *msg, uint32_t size)
 {
 	/* Need to call two copies if it wraps around */
 	uint32_t size1, size2;
 	if ((char*)header + size >= (char*)rb->rb_base + rb->size) {
 		size1 = (uint32_t) ( ((char*)rb->rb_base + rb->size) - (char*)header );
 		size2 = size - size1;
-		if (touser) {
-			if (copy_to_user(msg, header, size1))
-				return -EFAULT;
-			if (copy_to_user((char*)msg+size1, (char *)rb->rb_base, size2))
-				return -EFAULT;
-		} else {
-			memcpy_fromio(msg, header, size1);
-			memcpy_fromio((char*)msg+size1, rb->rb_base, size2);
-		}
+		memcpy_fromio(msg, header, size1);
+		memcpy_fromio((char*)msg+size1, rb->rb_base, size2);
 	} else {
-		if (touser) {
-			if (copy_to_user(msg, header, size))
-				return -EFAULT;
-		} else {
-			memcpy_fromio(msg, header, size);
-		}
+		memcpy_fromio(msg, header, size);
 	}
 	return 0;
 }
@@ -179,20 +155,19 @@ EXPORT_SYMBOL(micscif_rb_space);
  * @rb - The RingBuffer context
  * @msg - The package to be put in the ring buffer
  * @size - the size (in bytes) you want to copy
- * @fromuser - the package is from userspace or kernel
  *
  * This API does not block if there isn't enough space in the RB.
  */
 int micscif_rb_write(struct micscif_rb *rb,
 			void *msg,
-			uint32_t size, bool fromuser)
+			uint32_t size)
 {
 	void *header;
 	int ret = 0;
 	if ((uint32_t)micscif_rb_space(rb) < size)
 		return -ENOMEM;
 	header = (char*)rb->rb_base + rb->current_write_offset;
-	ret = memcpy_torb(rb, header, msg, size, fromuser);
+	ret = memcpy_torb(rb, header, msg, size);
 	if (!ret) {
 		/*
 		 * XPU_RACE_CONDITION: Don't do anything here!
@@ -217,7 +192,7 @@ EXPORT_SYMBOL(micscif_rb_write);
  * Returns the number of bytes possible to read -- if retVal != size, then
  * the read does not occur.
  */
-int micscif_rb_get_next (struct micscif_rb *rb, void *msg, uint32_t size, bool touser)
+int micscif_rb_get_next (struct micscif_rb *rb, void *msg, uint32_t size)
 {
 	void *header = NULL;
 	int read_size = 0;
@@ -231,7 +206,7 @@ int micscif_rb_get_next (struct micscif_rb *rb, void *msg, uint32_t size, bool t
 		read_size = size;
 		rb->old_current_read_offset = rb->current_read_offset;
 		rb->current_read_offset = next_cmd_offset;
-		if (memcpy_fromrb(rb, header, msg, size, touser))  // add check here
+		if (memcpy_fromrb(rb, header, msg, size))  // add check here
 			return -EFAULT;
 	}
 	return read_size;

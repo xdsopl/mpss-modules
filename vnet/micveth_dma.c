@@ -1010,6 +1010,7 @@ micvnet_deinit_interrupts(struct micvnet_info *vnet_info)
 	destroy_workqueue(vnet_info->vi_wq);
 }
 
+
 static int
 micvnet_init_netdev(struct micvnet_info *vnet_info)
 {

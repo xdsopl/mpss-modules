@@ -115,7 +115,7 @@ void micscif_rb_init(struct micscif_rb *rb, volatile uint32_t *read_ptr,
 /*
  * write a new command, then micscif_rb_commit()
  */
-int micscif_rb_write(struct micscif_rb *rb, void *msg, uint32_t size, bool fromuser);
+int micscif_rb_write(struct micscif_rb *rb, void *msg, uint32_t size);
 /*
  * After write(), then micscif_rb_commit()
  */
@@ -146,7 +146,7 @@ int micscif_rb_space(struct micscif_rb *rb);
  * into by size, so the buffer pointer to by msg MUST be at least size
  * bytes long.
  */
-int micscif_rb_get_next (struct micscif_rb *rb, void *msg, uint32_t size, bool touser);
+int micscif_rb_get_next (struct micscif_rb *rb, void *msg, uint32_t size);
 
 /*
  * updates the control block read pointer,

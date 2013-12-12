@@ -142,16 +142,23 @@ static ssize_t
 set_flash_update(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
 {
 	unsigned long value;
+	int ret;
 	bd_info_t *bdi = dev_to_bdi(dev);
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,39)
-	int ret;
 	ret = kstrtoul(buf, 0, &value);
 	if (ret)
 		return count;
 #else
 	value = simple_strtoul(buf, NULL, 10);
 #endif
+	ret = micpm_get_reference(&bdi->bi_ctx, true);
+	if (ret)
+		return -EAGAIN;
 	DBOX_WRITE((unsigned int)value, bdi->bi_ctx.mmio.va, DBOX_SWF0X0);
+	ret = micpm_put_reference(&bdi->bi_ctx);
+	if (ret)
+		return -EAGAIN;
+
 	return count;
 
 }
@@ -681,11 +688,18 @@ show_serialnumber(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	bd_info_t *bdi = dev_to_bdi(dev);
 	union serialnum serial;
+	uint32_t ret;
 
 	memset(serial.serial, 0, sizeof(serial.serial));
+	ret = micpm_get_reference(&bdi->bi_ctx, true);
+	if (ret)
+		return -EAGAIN;
 	serial.values[0] = DBOX_READ(bdi->bi_ctx.mmio.va, DBOX_SWF1X0);
 	serial.values[1] = DBOX_READ(bdi->bi_ctx.mmio.va, DBOX_SWF1X1);
 	serial.values[2] = DBOX_READ(bdi->bi_ctx.mmio.va, DBOX_SWF1X2);
+	ret = micpm_put_reference(&bdi->bi_ctx);
+	if (ret)
+		return -EAGAIN;
 	return snprintf(buf, PAGE_SIZE, "%s", serial.serial);
 }
 static DEVICE_ATTR(serialnumber, S_IRUGO, show_serialnumber, NULL);
