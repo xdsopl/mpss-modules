@@ -99,8 +99,6 @@
 #define TEST_LOOP 2000
 #endif
 
-#define IS_USER_BUFFER true
-
 //#define P2P_HACK 0
 #include "scif.h"
 #include "scif_ioctl.h"

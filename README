@@ -1,6 +1,6 @@
-This is a port of the mic module for the Intel Xeon Phi Coprocessor for linux-3.11
+This is a port of the mic module for the Intel Xeon Phi Coprocessor for linux-3.12
 
-tested and working on linux-3.11.6
+mpss-modules-3.1.1 tested and working on linux-3.12.3
 
 this is the "master" branch, which only has tested fixes and rewrites from
 the "devel" branch.
@@ -21,7 +21,7 @@ for example version 3.10.0:
 # cd linux-3.10.0
 # ~/mpss-modules/build.sh
 
-not tested yet but compiles fine with following vanilla kernels:
+not all tested but compiles fine with following vanilla kernels:
 
 linux-2.6.32.60
 linux-2.6.38.8
@@ -50,4 +50,6 @@ linux-3.10.0
 linux-3.10.9
 linux-3.11.0
 linux-3.11.6
+linux-3.12.1
+linux-3.12.3
 

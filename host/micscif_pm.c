@@ -629,7 +629,7 @@ mic_pm_recv_work(struct work_struct *recv_work)
 			mic_ctx->micpm_ctx.con_state = PM_DISCONNECTING;
 			wake_up(&mic_ctx->micpm_ctx.disc_wq);
 		}
-
+		goto unqueue;
 	}
 	return;
 unqueue:
@@ -980,6 +980,7 @@ micpm_stop(mic_ctx_t *mic_ctx) {
 	}
 	mic_ctx->micpm_ctx.con_state = PM_DISCONNECTED;
 	mic_ctx->micpm_ctx.idle_state = PM_IDLE_STATE_PC0;
+	flush_workqueue(mic_ctx->micpm_ctx.resume.wq);
 	flush_workqueue(mic_ctx->micpm_ctx.recv.wq);
 	flush_workqueue(mic_ctx->micpm_ctx.handle_msg.wq);
 	cancel_delayed_work_sync(&mic_ctx->micpm_ctx.pc6_entry_work);
