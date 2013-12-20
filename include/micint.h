@@ -59,7 +59,6 @@
 #include <asm/io.h>
 #include <asm/ioctl.h>
 #include <asm/uaccess.h>
-#include <drm/drmP.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/rtnetlink.h>

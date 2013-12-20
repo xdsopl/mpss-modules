@@ -245,6 +245,14 @@ __scif_close(scif_epd_t epd)
 			/* Now wait for the remote node to respond */
 			wait_event_timeout(ep->disconwq, 
 				(ep->state == SCIFEP_DISCONNECTED), NODE_ALIVE_TIMEOUT);
+		/*
+		 * Grab and release the ep lock to synchronize with the
+		 * thread waking us up. If we dont grab this lock, then
+		 * the ep might be freed before the wakeup completes
+		 * resulting in potential memory corruption.
+		 */
+		spin_lock_irqsave(&ep->lock, sflags);
+		spin_unlock_irqrestore(&ep->lock, sflags);
 		break;
 	}
 	case SCIFEP_LISTENING:

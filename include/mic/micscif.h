@@ -783,18 +783,27 @@ static inline int verify_epd(struct endpt *ep)
 }
 
 /**
- * scif_invalidate_conn_ep() - Set remote SCIF device state for all connected
- * endpoints for a particular node to SCIFDEV_STOPPED, change endpoint state
- * to disconnected and wake up all send/recv/con waitqueues.
+ * scif_invalidate_ep() - Set remote SCIF device state for all connected
+ * and disconnected endpoints for a particular node to SCIFDEV_STOPPED,
+ * change endpoint state to disconnected and wake up all send/recv/con
+ * waitqueues.
  */
 static inline void
-scif_invalidate_connected_ep(int node)
+scif_invalidate_ep(int node)
 {
 	struct endpt *ep;
 	unsigned long sflags;
 	struct list_head *pos, *tmpq;
 
 	spin_lock_irqsave(&ms_info.mi_connlock, sflags);
+	list_for_each_safe(pos, tmpq, &ms_info.mi_disconnected) {
+		ep = list_entry(pos, struct endpt, list);
+		if (ep->remote_dev->sd_node == node) {
+			spin_lock(&ep->lock);
+			ep->sd_state = SCIFDEV_STOPPED;
+			spin_unlock(&ep->lock);
+		}
+	}
 	list_for_each_safe(pos, tmpq, &ms_info.mi_connected) {
 		ep = list_entry(pos, struct endpt, list);
 		if (ep->remote_dev->sd_node == node) {
