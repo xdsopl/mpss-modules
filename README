@@ -1,6 +1,6 @@
 This is a port of the mic module for the Intel Xeon Phi Coprocessor for linux-3.12
 
-mpss-modules-3.1.1 tested on linux-3.12.3
+mpss-modules-3.1.2 compiles fine on linux-3.12.3, untested.
 
 to install, edit (if needed) and execute "install.sh"
 
