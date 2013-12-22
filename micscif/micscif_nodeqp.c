@@ -109,7 +109,7 @@ int micscif_teardown_ep(void *endpt)
  */
 void micscif_add_epd_to_zombie_list(struct endpt *ep, bool mi_eplock_held)
 {
-	unsigned long sflags;
+	unsigned long sflags = 0;
 
 	/*
 	 * It is an error to call scif_close() on an endpoint on which a
@@ -125,7 +125,9 @@ void micscif_add_epd_to_zombie_list(struct endpt *ep, bool mi_eplock_held)
 		wake_up(&ep->remote_dev->sd_mmap_wq);
 	if (!mi_eplock_held)
 		spin_lock_irqsave(&ms_info.mi_eplock, sflags);
+	spin_lock(&ep->lock);
 	ep->state = SCIFEP_ZOMBIE;
+	spin_unlock(&ep->lock);
 	list_add_tail(&ep->list, &ms_info.mi_zombie);
 	ms_info.mi_nr_zombies++;
 	if (!mi_eplock_held)
@@ -1175,15 +1177,15 @@ scif_cnctgntack_resp(struct micscif_dev *scifdev, struct nodemsg *msg)
 	unsigned long sflags;
 	struct endpt *ep = (struct endpt *)msg->payload[0];
 
+	spin_lock_irqsave(&ms_info.mi_connlock, sflags);
+	spin_lock(&ep->lock);
 	// New ep is now connected with all resouces set.
 	ep->state = SCIFEP_CONNECTED;
-
-	spin_lock_irqsave(&ms_info.mi_connlock, sflags);
 	list_add_tail(&ep->list, &ms_info.mi_connected);
 	get_conn_count(scifdev);
-	spin_unlock_irqrestore(&ms_info.mi_connlock, sflags);
-
 	wake_up(&ep->conwq);
+	spin_unlock(&ep->lock);
+	spin_unlock_irqrestore(&ms_info.mi_connlock, sflags);
 }
 
 /**
@@ -1198,10 +1200,12 @@ static __always_inline void
 scif_cnctgntnack_resp(struct micscif_dev *scifdev, struct nodemsg *msg)
 {
 	struct endpt *ep = (struct endpt *)msg->payload[0];
+	unsigned long sflags;
 
+	spin_lock_irqsave(&ep->lock, sflags);
 	ep->state = SCIFEP_CLOSING;
-	//ep->state = SCIFEP_DISCONNECTED;
 	wake_up(&ep->conwq);
+	spin_unlock_irqrestore(&ep->lock, sflags);
 }
 
 /**
@@ -1215,11 +1219,14 @@ static __always_inline void
 scif_cnctrej_resp(struct micscif_dev *scifdev, struct nodemsg *msg)
 {
 	struct endpt *ep = (struct endpt *)msg->payload[0];
+	unsigned long sflags;
 
+	spin_lock_irqsave(&ep->lock, sflags);
 	if (SCIFEP_CONNECTING == ep->state) {
 		ep->state = SCIFEP_BOUND;
 		wake_up_interruptible(&ep->conwq);
 	}
+	spin_unlock_irqrestore(&ep->lock, sflags);
 }
 
 /**
@@ -1323,14 +1330,14 @@ scif_discnct_resp(struct micscif_dev *scifdev, struct nodemsg *msg)
 
 	ep->state = SCIFEP_DISCONNECTED;
 	list_add_tail(&ep->list, &ms_info.mi_disconnected);
-	spin_unlock(&ms_info.mi_connlock);
 
 	// TODO Cause associated resources to be freed.
 	// First step: wake up threads blocked in send and recv
 	wake_up_interruptible(&ep->sendwq);
 	wake_up_interruptible(&ep->recvwq);
 	wake_up_interruptible(&ep->conwq);
-	spin_unlock_irqrestore(&ep->lock, sflags);
+	spin_unlock(&ep->lock);
+	spin_unlock_irqrestore(&ms_info.mi_connlock, sflags);
 
 discnct_resp_ack:
 	msg->uop = SCIF_DISCNT_ACK;
@@ -1347,9 +1354,12 @@ static __always_inline void
 scif_discntack_resp(struct micscif_dev *scifdev, struct nodemsg *msg)
 {
 	struct endpt *ep = (struct endpt *)msg->payload[0];
+	unsigned long sflags;
 
+	spin_lock_irqsave(&ep->lock, sflags);
 	ep->state = SCIFEP_DISCONNECTED;
 	wake_up(&ep->disconwq);
+	spin_unlock_irqrestore(&ep->lock, sflags);
 }
 
 /**
@@ -2538,10 +2548,10 @@ scif_get_node_info_resp(struct micscif_dev *scifdev, struct nodemsg *msg)
 	ms_info.mi_mask = msg->payload[0];
 	ms_info.mi_maxid = msg->payload[1];
 	ms_info.mi_total = msg->payload[2];
-	mutex_unlock(&ms_info.mi_conflock);
 
 	node_info->state = OP_COMPLETED;
 	wake_up(&node_info->wq);
+	mutex_unlock(&ms_info.mi_conflock);
 #else
 	swap(msg->dst.node, msg->src.node);
 	mutex_lock(&ms_info.mi_conflock);

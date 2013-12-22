@@ -271,7 +271,7 @@ void micscif_cleanup_scifdev(struct micscif_dev *dev, bool destroy_wq)
 	drain_dma_global(mic_ctx->dma_handle);
 	micscif_destroy_p2p(mic_ctx);
 #endif
-	scif_invalidate_connected_ep(dev->sd_node);
+	scif_invalidate_ep(dev->sd_node);
 	micscif_kill_apps_with_mmaps(dev->sd_node);
 
 	micscif_cleanup_qp(dev);
@@ -1720,6 +1720,9 @@ void micscif_get_node_info(void)
 	wait_event(node_info.wq, node_info.state != OP_IN_PROGRESS);
 done:
 	micscif_dec_node_refcnt(&scif_dev[SCIF_HOST_NODE], 1);
+	/* Synchronize with the thread waking us up */
+	mutex_lock(&ms_info.mi_conflock);
+	mutex_unlock(&ms_info.mi_conflock);
 	;
 }
 #endif /* _MIC_SCIF_ */

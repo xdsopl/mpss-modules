@@ -1,6 +1,6 @@
 This is a port of the mic module for the Intel Xeon Phi Coprocessor for linux-3.12
 
-mpss-modules-3.1.1 tested and working on linux-3.12.3
+mpss-modules-3.1.2 tested and working on linux-3.12.6.
 
 this is the "master" branch, which only has tested fixes and rewrites from
 the "devel" branch.
@@ -9,47 +9,4 @@ please checkout the "minimal" branch if youre only interested in the smallest
 necessary fixes possible to make it work.
 
 to install, edit (if needed) and execute "install.sh"
-
-if you want to help test different kernel versions, read on:
-
-assuming that mps-modules is in your home directory, simply execute the
-build.sh script from the linux directory from which you configured and
-module_install'ed the version you like to compile the module for:
-
-for example version 3.10.0:
-
-# cd linux-3.10.0
-# ~/mpss-modules/build.sh
-
-not all tested but compiles fine with following vanilla kernels:
-
-linux-2.6.32.60
-linux-2.6.38.8
-linux-2.6.39.0
-linux-2.6.39.4
-linux-3.0.75
-linux-3.1.0
-linux-3.1.10
-linux-3.2.0
-linux-3.2.44
-linux-3.3.0
-linux-3.3.8
-linux-3.4.0
-linux-3.4.42
-linux-3.5.0
-linux-3.5.7
-linux-3.6.0
-linux-3.6.11
-linux-3.7.0
-linux-3.7.10
-linux-3.8.0
-linux-3.8.10
-linux-3.9.0
-linux-3.9.9
-linux-3.10.0
-linux-3.10.9
-linux-3.11.0
-linux-3.11.6
-linux-3.12.1
-linux-3.12.3
 
