@@ -1041,11 +1041,13 @@ retry_connection:
 
 	cep->qp_info.qp->magic = SCIFEP_MAGIC;
 	cep->qp_info.qp->ep = (uint64_t)cep;
+	micscif_inc_node_refcnt(cep->remote_dev, 1);
 	err = micscif_setup_qp_accept(cep->qp_info.qp, &cep->qp_info.qp_offset,
 		conreq->msg.payload[1], ENDPT_QP_SIZE, cep->remote_dev);
 	if (err) {
 		pr_debug("SCIFAPI accept: ep %p new %p micscif_setup_qp_accept %d qp_offset 0x%llx\n", 
 			    lep, cep, err, cep->qp_info.qp_offset);
+		micscif_dec_node_refcnt(cep->remote_dev, 1);
 		goto scif_accept_error_map;
 	}
 
@@ -1058,7 +1060,6 @@ retry_connection:
 	init_waitqueue_head(&cep->recvwq); // Wait for data to be produced
 	init_waitqueue_head(&cep->conwq);  // Wait for connection request
 
-	micscif_inc_node_refcnt(cep->remote_dev, 1);
 	// Return the grant message
 	msg.uop = SCIF_CNCT_GNT;
 	msg.src = cep->port;

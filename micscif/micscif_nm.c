@@ -461,6 +461,23 @@ get_nodemask_bit(uint8_t* nodemask, uint32_t node_id) {
 	return *temp_mask & (1ULL << node_id);
 
 }
+/**
+* nodemask_isvalid - Check if a nodemask is valid after
+* calculating the de-activation set.
+*
+* @nodemask[in]: The nodemask to be checked.
+*
+* Returns true if valid.
+*/
+bool nodemask_isvalid(uint8_t* nodemask) {
+	uint32_t i;
+	for (i = 0; i <= ms_info.mi_maxid; i++) {
+		if (get_nodemask_bit(nodemask, i))
+			return true;
+	}
+
+	return false;
+}
 
 #ifndef _MIC_SCIF_
 /*
@@ -1123,9 +1140,9 @@ micscif_get_deactiveset(uint32_t node_id, uint8_t *nodemask, int max_disconn)
 		}
 	} /* end for while (!is_stack_empty(&stack)) */
 
-	/* TODO: check nodemask for all 0's */
-	if (*nodemask == 0) {
-		pr_debug("%s No deactivation set found for node %d", __func__, node_id);
+	if (!nodemask_isvalid(nodemask)) {
+		pr_debug("%s No deactivation set found for node %d", 
+		__func__, node_id);
 		status = -EOPNOTSUPP;
 	}
 exit:
