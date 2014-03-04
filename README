@@ -1,5 +1,7 @@
 This is a port of the mic module for the Intel Xeon Phi Coprocessor for linux-3.12
 
+Please be aware that the mic host and card drivers finally made into linux-3.13
+
 mpss-modules-3.1.2 tested and working on linux-3.12.6.
 
 this is the "master" branch, which only has tested fixes and rewrites from
