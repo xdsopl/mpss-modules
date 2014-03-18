@@ -823,10 +823,12 @@ err_exit:
 	return NETDEV_TX_OK;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0)
 static void
 micvnet_multicast_list(struct net_device *dev)
 {
 }
+#endif
 
 static int
 micvnet_set_address(struct net_device *dev, void *p)
@@ -897,8 +899,6 @@ static const struct net_device_ops micvnet_netdev_ops = {
 	.ndo_validate_addr	= eth_validate_addr,
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0)
 	.ndo_set_multicast_list = micvnet_multicast_list,
-#else
-	.ndo_set_rx_mode	= micvnet_multicast_list,
 #endif
 	.ndo_set_mac_address	= micvnet_set_address,
 	.ndo_change_mtu		= micvnet_change_mtu,

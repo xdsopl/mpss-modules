@@ -84,10 +84,12 @@ micveth_set_address(struct net_device *dev, void *p)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0)
 static void
 micveth_multicast_list(struct net_device *dev)
 {
 }
+#endif
 
 static int
 micveth_deliver(struct sk_buff *skb, struct net_device *dev, micveth_info_t *veth_info)
@@ -203,8 +205,6 @@ static const struct net_device_ops veth_netdev_ops = {
 	.ndo_validate_addr	= eth_validate_addr,
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0)
 	.ndo_set_multicast_list = micveth_multicast_list,
-#else
-	.ndo_set_rx_mode	= micveth_multicast_list,
 #endif
 	.ndo_set_mac_address	= micveth_set_address,
 	.ndo_change_mtu		= micveth_change_mtu,
