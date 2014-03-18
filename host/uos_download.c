@@ -644,6 +644,8 @@ load_command_line(mic_ctx_t *mic_ctx, uint64_t uos_cmd_offset)
 	cmdlen += snprintf(buf + cmdlen, MIC_CMDLINE_BUFSIZE - cmdlen,
 		" reg_cache=%d", mic_reg_cache_enable);
 	cmdlen += snprintf(buf + cmdlen, MIC_CMDLINE_BUFSIZE - cmdlen,
+		" ulimit=%d", mic_ulimit_check);
+	cmdlen += snprintf(buf + cmdlen, MIC_CMDLINE_BUFSIZE - cmdlen,
 		" huge_page=%d", mic_huge_page_enable);
 	if (mic_crash_dump_enabled)
 		cmdlen += snprintf(buf + cmdlen, MIC_CMDLINE_BUFSIZE - cmdlen,
@@ -798,6 +800,7 @@ exit:
 		mic_setstate(mic_ctx, MIC_ONLINE);
 		mic_ctx->boot_count++;
 		printk("ELF booted succesfully\n");
+		0;
 	}
 	return status;
 }
@@ -930,6 +933,8 @@ void ramoops_flip(mic_ctx_t *mic_ctx);
 int
 adapter_shutdown_device(mic_ctx_t *mic_ctx)
 {
+	0;
+
 	if (micpm_get_reference(mic_ctx, true))
 		return 0;
 
@@ -952,6 +957,8 @@ adapter_shutdown_device(mic_ctx_t *mic_ctx)
 int
 adapter_stop_device(mic_ctx_t *mic_ctx, int wait_reset, int reattempt)
 {
+	0;
+
 	micvcons_stop(mic_ctx);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34) || \
 	defined(RHEL_RELEASE_CODE)
@@ -1036,6 +1043,32 @@ adapter_remove(mic_ctx_t *mic_ctx)
 	return 0;
 }
 
+#define MIC_MAX_BOOT_TIME 180	// Maximum number of seconds to wait for boot to complete
+
+static void
+online_timer(unsigned long arg)
+{
+	mic_ctx_t *mic_ctx = (mic_ctx_t *)arg;
+	uint64_t delay = (jiffies - mic_ctx->boot_start) / HZ;
+
+	if (mic_ctx->state == MIC_ONLINE)
+		return;
+
+	if (delay > MIC_MAX_BOOT_TIME) {
+		printk("Fail booting MIC %d. Wait time execeed %d seconds\n", mic_ctx->bi_id, MIC_MAX_BOOT_TIME);
+		mic_ctx->state = MIC_BOOTFAIL;
+		return;
+	}
+
+	mic_ctx->boot_timer.function = online_timer;
+	mic_ctx->boot_timer.data = (unsigned long)mic_ctx;
+	mic_ctx->boot_timer.expires = jiffies + HZ;
+	add_timer(&mic_ctx->boot_timer);
+
+	if (!(delay % 5))
+		printk("Waiting for MIC %d boot %lld\n", mic_ctx->bi_id, delay);
+}
+
 static void
 boot_timer(unsigned long arg)
 {
@@ -1044,8 +1077,13 @@ boot_timer(unsigned long arg)
 	uint64_t delay = (jiffies - mic_ctx->boot_start) / HZ;
 	bool timer_restart = false;
 
-	if ((mic_ctx->state != MIC_BOOT) &&
-			(mic_ctx->state != MIC_ONLINE)) {
+	if ((mic_ctx->state != MIC_BOOT) && (mic_ctx->state != MIC_ONLINE)) {
+		return;
+	}
+
+	if (delay > MIC_MAX_BOOT_TIME) {
+		printk("Fail booting MIC %d. Wait time execeed %d seconds\n", mic_ctx->bi_id, MIC_MAX_BOOT_TIME);
+		mic_ctx->state = MIC_BOOTFAIL;
 		return;
 	}
 
@@ -1066,6 +1104,11 @@ boot_timer(unsigned long arg)
 		add_timer(&mic_ctx->boot_timer);
 		return;
 	}
+
+	mic_ctx->boot_timer.function = online_timer;
+	mic_ctx->boot_timer.data = (unsigned long)mic_ctx;
+	mic_ctx->boot_timer.expires = jiffies + HZ;
+	add_timer(&mic_ctx->boot_timer);
 
 	printk("MIC %d Network link is up\n", mic_ctx->bi_id);
 	schedule_work(&mic_ctx->boot_ws);
@@ -1174,7 +1217,6 @@ static int ramoops_show(struct seq_file *m, void *v)
 		size = strlen(record);
 
 	seq_write(m, record, size);
-
 	spin_unlock_irqrestore(&mic_ctx->ramoops_lock, flags);
 
 	return 0;
@@ -1221,6 +1263,7 @@ ramoops_probe(mic_ctx_t *mic_ctx)
 							    mic_ctx->ramoops_size);
 		if (set_ramoops_pa(mic_ctx))
 			return;
+
 		snprintf(name, 64, "mic%d", mic_ctx->bi_id);
 		if (proc_create_data(name, 0444, ramoops_dir, &ramoops_fops,
 					   (void *)(long)mic_ctx->bi_id) == NULL)
@@ -1303,7 +1346,6 @@ adapter_probe(mic_ctx_t *mic_ctx)
 			mic_shutdown_host_doorbell_intr_handler);
 
 	ramoops_probe(mic_ctx);
-
 	if (status) {
 		printk("boot_linux_uos failed \n");
 		return status;
@@ -1455,6 +1497,7 @@ adapter_init_device(mic_ctx_t *mic_ctx)
 		vcons_buf->o_size = MICVCONS_BUF_SIZE;
 		smp_wmb();
 		vcons_buf->host_magic = MIC_HOST_VCONS_READY;
+		vcons_buf->host_rb_ver = micscif_rb_get_version();
 	}
 #endif // USE_VCONSOLE
 	mic_ctx->boot_mem = 0;

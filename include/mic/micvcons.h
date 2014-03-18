@@ -90,6 +90,7 @@
 #define MIC_VCONS_WAKINGUP	0xd12d
 #define MIC_HOST_VCONS_READY	0xbad0
 #define MIC_VCONS_HOST_OPEN	0xbad1
+#define MIC_VCONS_RB_VER_ERR	0xbad2
 
 #define MICVCONS_TIMER_RESTART	1
 #define MICVCONS_TIMER_SHUTDOWN	0
@@ -132,6 +133,9 @@ struct vcons_buf
 {
 	uint32_t	host_magic;
 	uint32_t	mic_magic;
+
+	uint16_t	host_rb_ver;
+	uint16_t	mic_rb_ver;
 
 	/* mic o/p buffer */
 	dma_addr_t o_buf_dma_addr;	/* host buf dma addr*/

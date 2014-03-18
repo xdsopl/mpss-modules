@@ -69,9 +69,10 @@ enum {
 	SCIF_PROT_WRITE = (1<<1)
 };
 
+/* 0x40 is used internally by scif */
 enum {
 	SCIF_MAP_FIXED = 0x10,
-	SCIF_MAP_KERNEL	= 0x20
+	SCIF_MAP_KERNEL	= 0x20,
 };
 
 enum {
@@ -174,8 +175,16 @@ enum {
 #define SCIF_BT_PORT_9		139
 
 /* MIC Boot/Configuration support */
-#define MPSSD_DOWNLOAD		160
+#define MPSSD_MONRECV		160
 #define MIC_NOTIFY		161
+#define MPSSD_CRED		162
+#define MPSSD_MONSEND		163
+#define MPSSD_MICCTRL		164
+#define MPSSD_RESV5		165
+#define MPSSD_RESV6		166
+#define MPSSD_RESV7		167
+#define MPSSD_RESV8		168
+#define MPSSD_RESV9		169
 
 #define SCIF_ADMIN_PORT_END	1024
 
@@ -276,6 +285,8 @@ typedef struct portID portID_t;
  *\par Errors:
  *- ENOMEM
  * - Insufficient kernel memory was available.
+ *- ENXIO
+ * - Version mismatch between micscif driver and libscif.
  */
 scif_epd_t scif_open(void);
 

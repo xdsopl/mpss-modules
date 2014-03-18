@@ -384,7 +384,7 @@ micveth_init_int(int num_bds, struct device *dev)
 static void
 micveth_exit_int(void)
 {
-	mic_ctx_t mic_ctx;
+	mic_ctx_t *mic_ctx = kmalloc(sizeof(mic_ctx_t), GFP_KERNEL);
 	micveth_info_t *veth_info;
 	ring_packet_t *packet;
 	int bd;
@@ -397,8 +397,8 @@ micveth_exit_int(void)
 
 		/* veth_info->mic_ctx == mic_data.dd_bi[bd] is freed in
 		   remove so cannot be used in exit */
-		mic_ctx.bi_vethinfo = veth_info;
-		micveth_stop(&mic_ctx);
+		mic_ctx->bi_vethinfo = veth_info;
+		micveth_stop(mic_ctx);
 
 #if WA_UNMAP_AT_RMMOD
 		mic_ctx_unmap_single(veth_to_ctx(veth_info), veth_info->vi_ring.phys,
@@ -425,6 +425,7 @@ micveth_exit_int(void)
 		}
 	}
 
+	kfree(mic_ctx);
 	kfree(micveth.lv_info);
 }
 

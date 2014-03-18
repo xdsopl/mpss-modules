@@ -554,7 +554,8 @@ static int micscif_rma_list_dma_copy_aligned(struct mic_copy_work *work, struct 
 			return -ENOMEM;
 		}
 		if (is_local_dma_addr(src_dma_addr)){
-			memcpy_toio(dst_virt, src_virt, loop_len);
+			micscif_unaligned_memcpy(dst_virt, src_virt, loop_len,
+					remaining_len == loop_len ? work->ordered : false);
 		}
 		else{
 			memcpy_fromio(dst_virt, src_virt, loop_len);
@@ -729,7 +730,7 @@ static int micscif_rma_list_dma_copy_aligned(struct mic_copy_work *work, struct 
 		}
 
 		if (is_local_dma_addr(src_dma_addr)){
-			memcpy_toio(dst_virt, src_virt, loop_len);
+			micscif_unaligned_memcpy(dst_virt, src_virt, loop_len, work->ordered);
 		}
 		else{
 			memcpy_fromio(dst_virt, src_virt, loop_len);

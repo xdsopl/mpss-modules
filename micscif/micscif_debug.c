@@ -47,6 +47,8 @@
 #include <linux/proc_fs.h>
 #include <linux/debugfs.h>
 
+#include <linux/module.h>
+
 static char *window_type[] = {
 	"NONE",
 	"SELF",
@@ -292,7 +294,8 @@ static int scif_debug_show(struct seq_file *m, void *v)
 		mic_huge_page_enable, ms_info.nr_2mb_pages, ms_info.nr_4k_pages);
 #ifdef RMA_DEBUG
 	seq_printf(m,
-		"rma_alloc_cnt %ld rma_pin_cnt %ld mmu_notif %ld rma_unaligned_cpu_cnt %ld\n",
+		"mm ref cnt %ld rma_alloc_cnt %ld rma_pin_cnt %ld mmu_notif %ld rma_unaligned_cpu_cnt %ld\n",
+		atomic_long_read(&ms_info.rma_mm_cnt),
 		atomic_long_read(&ms_info.rma_alloc_cnt),
 		atomic_long_read(&ms_info.rma_pin_cnt),
 		atomic_long_read(&ms_info.mmu_notif_cnt),

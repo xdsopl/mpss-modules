@@ -42,6 +42,7 @@
 
 #include <linux/module.h>
 #include <linux/circ_buf.h>
+#include <linux/module.h>
 #define count_in_ring(head, tail, size)    CIRC_CNT(head, tail, size)
 #define space_in_ring(head, tail, size)    CIRC_SPACE(head, tail, size)
 
@@ -364,3 +365,13 @@ static void *micscif_rb_get(struct micscif_rb *rb, uint32_t size)
 		header = (char*)rb->rb_base + rb->current_read_offset;
 	return header;
 }
+
+/**
+ * micscif_rb_get_version
+ * Return the ring buffer module version
+ */
+uint16_t micscif_rb_get_version(void)
+{
+	return RING_BUFFER_VERSION;
+}
+EXPORT_SYMBOL(micscif_rb_get_version);
