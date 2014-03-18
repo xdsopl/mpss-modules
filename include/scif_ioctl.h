@@ -49,6 +49,15 @@
 #endif
 
 /**
+ * The purpose of SCIF_VERSION is to check for compatibility between host and
+ * card SCIF modules and also between SCIF driver and libscif. This version
+ * should be incremented whenever a change is made to SCIF that affects the
+ * interface between SCIF driver and libscif or between the card and host SCIF
+ * driver components.
+ */
+#define SCIF_VERSION		1
+
+/**
  * struct scifioctl_connect:
  *
  * \param self			used to read back the assigned portID
@@ -217,3 +226,4 @@ struct scifioctl_nodeIDs {
 #define SCIF_FENCE_WAIT		_IOWR('s', 16, int)
 #define SCIF_FENCE_SIGNAL	_IOWR('s', 17, struct scifioctl_fence_signal *)
 
+#define SCIF_GET_VERSION	_IO('s', 23)

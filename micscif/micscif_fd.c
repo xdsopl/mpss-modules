@@ -521,6 +521,10 @@ fence_signal_err:
 		scif_err_debug(err, "scif_fence_signal");
 		return err;
 	}
+	case SCIF_GET_VERSION:
+	{
+		return SCIF_VERSION;
+	}
 	}
 	return -EINVAL;
 }

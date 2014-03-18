@@ -118,11 +118,11 @@ adapter_do_ioctl(uint32_t cmd, uint64_t arg)
 		mic_ctx = get_per_dev_ctx(args.brdnum);
 		if (!mic_ctx) {
 			printk(KERN_ERR "IOCTL error: null mic context\n");
-			return -EFAULT;
+			return -ENODEV;
 		}
 
 		if(mic_ctx->state != MIC_ONLINE || mic_ctx->mode != MODE_LINUX) {
-			status = -EFAULT;
+			status = -EPERM;
 			printk("Error ! Card not in linux mode or online state!\n");
 			return status;
 		}
@@ -152,7 +152,7 @@ do_send_flash_cmd(mic_ctx_t *mic_ctx, struct ctrlioctl_flashcmd *args)
 
 	if(!capable(CAP_SYS_ADMIN)) {
 		printk(KERN_ERR "Cannot execute unless sysadmin\n");
-		return -EPERM;
+		return -EACCES;
 	}
 
 	pr_debug("%s\n IN:: brdnum = %d, type = %x, data = %p, len = %x\n", 
@@ -171,7 +171,7 @@ get_card_mem(mic_ctx_t *mic_ctx, struct ctrlioctl_cardmemcpy *args)
 
 	if(!capable(CAP_SYS_ADMIN)) {
 		printk(KERN_ERR "Cannot execute unless sysadmin\n");
-		return -EPERM;
+		return -EACCES;
 	}
 
 	if (args->dest == NULL) {

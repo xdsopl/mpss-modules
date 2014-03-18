@@ -59,6 +59,9 @@ MODULE_INFO(build_scmver, BUILD_SCMVER);
 struct kmem_cache *unaligned_cache;
 mic_lindata_t mic_lindata;
 
+module_param_named(ulimit, mic_ulimit_check, bool, 0600);
+MODULE_PARM_DESC(ulimit, "SCIF ulimit check");
+
 module_param_named(reg_cache, mic_reg_cache_enable, bool, 0600);
 MODULE_PARM_DESC(reg_cache, "SCIF registration caching");
 

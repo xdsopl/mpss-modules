@@ -256,6 +256,11 @@ extern "C" {
 #define SHIFT_FLASH_UPDATE 0
 
 #define SKU_NAME_LEN	20
+
+/* Should be updated to reflect the latest interface version in sysfs and wmi property */
+#define LINUX_INTERFACE_VERSION "1.0"
+#define WINDOWS_INTERFACE_VERSION "1.0"
+
 typedef enum mic_modes
 {
 	MODE_NONE,
@@ -346,7 +351,6 @@ typedef struct micscif_pm {
 	uint8_t			*nodemask;
 	uint32_t		nodemask_len;
 } micscif_pm_t;
-
 
 /* per device power management context */
 typedef struct micpm_ctx
@@ -454,6 +458,7 @@ typedef struct _mic_ctx_t {
 	atomic_t		gate_interrupt;
 	uint16_t            numa_node;
 } mic_ctx_t;
+
 
 typedef struct mic_irqhander {
 	int (*ih_func)(mic_ctx_t *mic_ctx, int doorbell);

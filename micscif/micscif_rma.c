@@ -416,7 +416,7 @@ int micscif_destroy_pinned_pages(struct scif_pinned_pages *pinned_pages)
 {
 	int j;
 	int writeable = pinned_pages->prot & SCIF_PROT_WRITE;
-	int kernel = pinned_pages->map_flags;
+	int kernel = SCIF_MAP_KERNEL & pinned_pages->map_flags;
 
 	for (j = 0; j < pinned_pages->nr_pages; j++) {
 		if (pinned_pages->pages[j]) {
@@ -575,6 +575,12 @@ int micscif_destroy_window(struct endpt *ep, struct reg_range_t *window)
 
 	might_sleep();
 	RMA_MAGIC(window);
+	if (!window->temp && window->mm) {
+		__scif_dec_pinned_vm_lock(window->mm, window->nr_pages, 0);
+		__scif_release_mm(window->mm);
+		window->mm = NULL;
+	}
+
 	if (!window->offset_freed)
 		micscif_free_window_offset(ep, window->offset,
 			window->nr_pages << PAGE_SHIFT);
@@ -1089,8 +1095,15 @@ done:
 		window->offset_freed = true;
 		mutex_unlock(&ep->rma_info.rma_lock);
 		if ((!!(window->pinned_pages->map_flags & SCIF_MAP_KERNEL))
-			&& scifdev_alive(ep))
+			&& scifdev_alive(ep)) {
 			drain_dma_intr(ep->rma_info.dma_chan);
+		} else {
+			if (!__scif_dec_pinned_vm_lock(window->mm,
+						  window->nr_pages, 1)) {
+				__scif_release_mm(window->mm);
+				window->mm = NULL;
+			}
+		}
 		micscif_queue_for_cleanup(window, &ms_info.mi_rma);
 		mutex_lock(&ep->rma_info.rma_lock);
 	}

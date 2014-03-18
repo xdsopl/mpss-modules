@@ -200,6 +200,7 @@ struct micscif_info {
 	unsigned long	mi_rma_tc_limit;
 	uint64_t	mi_proxy_dma_threshold;
 #ifdef RMA_DEBUG
+	atomic_long_t	rma_mm_cnt;
 	atomic_long_t	rma_unaligned_cpu_cnt;
 	atomic_long_t	rma_alloc_cnt;
 	atomic_long_t	rma_pin_cnt;
@@ -230,6 +231,7 @@ enum scif_state {
 extern bool mic_p2p_enable;
 extern bool mic_p2p_proxy_enable;
 extern bool mic_reg_cache_enable;
+extern bool mic_ulimit_check;
 /* p2p mapping from node id to peer id */
 struct scif_p2p_info {
 	int		    ppi_peer_id;

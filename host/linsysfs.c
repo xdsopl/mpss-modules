@@ -704,6 +704,13 @@ show_serialnumber(struct device *dev, struct device_attribute *attr, char *buf)
 }
 static DEVICE_ATTR(serialnumber, S_IRUGO, show_serialnumber, NULL);
 
+static ssize_t
+show_interface_version(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%s", LINUX_INTERFACE_VERSION);
+}
+static DEVICE_ATTR(interface_version, S_IRUGO, show_interface_version, NULL);
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34) || \
 	defined(RHEL_RELEASE_CODE)
 extern ssize_t show_virtblk_file(struct device *dev, struct device_attribute *attr, char *buf);
@@ -738,6 +745,7 @@ static struct attribute *bd_attributes[] = {
 	&dev_attr_virtblk_file.attr,
 #endif
 	&dev_attr_sku.attr,
+	&dev_attr_interface_version.attr,
 
 #ifdef CONFIG_ML1OM
 	&sbox_attr_corevoltage.devattr.attr,

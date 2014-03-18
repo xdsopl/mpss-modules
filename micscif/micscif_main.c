@@ -502,8 +502,12 @@ static int micscif_init(void)
 	if ((result = register_scif_intr_handler(&scif_dev[SCIF_HOST_NODE])))
 		goto destroy_intr_wq;
 
-	if ((result = micscif_setup_card_qp(host_queue_phys, &scif_dev[SCIF_HOST_NODE])))
-		goto dereg_intr_handle;
+	if ((result = micscif_setup_card_qp(host_queue_phys, &scif_dev[SCIF_HOST_NODE]))) {
+		if (result == -ENXIO)
+			goto uninit_qp;
+		else
+			goto dereg_intr_handle;
+	}
 	/* need to do this last -- as soon as the dev is setup, userspace
 	 * can try to use the device
 	 */
@@ -585,6 +589,9 @@ module_exit(micscif_exit);
 
 module_param_named(huge_page, mic_huge_page_enable, bool, 0600);
 MODULE_PARM_DESC(huge_page, "SCIF Huge Page Support");
+
+module_param_named(ulimit, mic_ulimit_check, bool, 0600);
+MODULE_PARM_DESC(ulimit, "SCIF ulimit check");
 
 module_param_named(reg_cache, mic_reg_cache_enable, bool, 0600);
 MODULE_PARM_DESC(reg_cache, "SCIF registration caching");

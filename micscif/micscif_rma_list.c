@@ -501,7 +501,8 @@ int micscif_rma_list_mmap(struct reg_range_t *start_window,
 	struct reg_range_t *window;
 	int64_t start_page_nr, loop_nr_pages, nr_pages_left = nr_pages;
 	struct endpt *ep = (struct endpt *)start_window->ep;
-	int i, j = 0, err = 0;
+	int i, err = 0;
+	uint64_t j =0;
 	dma_addr_t phys_addr;
 
 	might_sleep();

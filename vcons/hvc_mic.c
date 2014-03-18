@@ -202,6 +202,7 @@ static int __init hvc_mic_init(void)
 	int err = 0;
 	char *hvc_buf;
 	u8 card_type=0;
+	uint16_t host_rb_ver, mic_rb_ver;
 
 #if defined(CONFIG_MK1OM)
 	card_type = MIC_KNC;
@@ -241,6 +242,17 @@ static int __init hvc_mic_init(void)
 		goto error;
 	}
 
+	host_rb_ver = readw(&hdr->host_rb_ver);
+	mic_rb_ver = micscif_rb_get_version();
+	writew(mic_rb_ver, &hdr->mic_rb_ver);
+	if (host_rb_ver != mic_rb_ver) {
+		printk(KERN_ERR "Card and host ring buffer versions mismatch.");
+		printk(KERN_ERR "Card ver: %d, Host ver: %d \n", mic_rb_ver,
+								host_rb_ver);
+		writel(MIC_VCONS_RB_VER_ERR, &hdr->mic_magic);
+		err = -ENXIO;
+		goto error;
+	}
 	memcpy_fromio(&tmp_hdr, hdr, sizeof(struct vcons_buf));
 
 	if (!(vcons_info.vcons_op_buf = ioremap_nocache(tmp_hdr.o_buf_dma_addr, 
@@ -290,6 +302,12 @@ error:
 		iounmap(hdr);
 	if (vcons_info.vcons_op_buf)
 		iounmap(vcons_info.vcons_op_buf);
+#if defined(CONFIG_MK1OM)
+	free_page((unsigned long)vcons_info.vcons_ip_buf);
+	kfree(vcons_info.mic_hdr);
+#else
+	free_page((unsigned long)vcons_info.mic_hdr);
+#endif
 	return err;
 }
 
