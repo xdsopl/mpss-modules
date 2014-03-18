@@ -219,11 +219,11 @@ micras_mc_log(struct mce_info * event)
 **       reliably at 400 kHz, so we switched to 100 kHz.
 */
 
-#define	REG_DBG		1	/* Debug I2C Layer 1 */
-#define	I2C_DBG		1	/* Debug I2C Layer 2 */
-#define	XFR_DBG		1	/* Debug I2C Layer 3 */
-#define	CON_DBG		1	/* Debug I2C UART */
-#define	EPR_DBG		1	/* Debug EEPROM log */
+#define	REG_DBG		0	/* Debug I2C Layer 1 */
+#define	I2C_DBG		0	/* Debug I2C Layer 2 */
+#define	XFR_DBG		0	/* Debug I2C Layer 3 */
+#define	CON_DBG		0	/* Debug I2C UART */
+#define	EPR_DBG		0	/* Debug EEPROM log */
 
 #if REG_DBG
 #define REG_REG			reg_dmp
@@ -424,14 +424,14 @@ lmr_sbox_rl(int dummy, uint32_t roff)
 {
   uint32_t	val;
 
-  val = * (uint32_t *)(micras_sbox + roff);
+  val = * (volatile uint32_t *)(micras_sbox + roff);
   return val;
 }
 
 void
 lmr_sbox_wl(int dummy, uint32_t roff, uint32_t val)
 {
-  * (uint32_t *)(micras_sbox + roff) = val;
+  * (volatile uint32_t *)(micras_sbox + roff) = val;
 }
 
 static uint32_t
@@ -551,14 +551,14 @@ check_rx_isr(uint32_t isr, bool stop)
 
       I2C_PRT("check_rx_isr: RWM\n");
       counter = 100;
-      while((reg_read(ISR_OFFSET) & ISR_RWM) && counter--)
+      while((reg_read(ISR_OFFSET) & ISR_RWM) && --counter)
         myDELAY(2);
       if(! counter) {
         REG_REG("-check_rx_isr");
-        I2C_PRT("check_rx_isr: timeout, rtn %d\n", RX_BIZARRE_ERROR);
+        I2C_PRT("check_rx_isr: timeout, RWM wait %d uSec, rtn %d\n", 2 * 100, RX_BIZARRE_ERROR);
         return RX_BIZARRE_ERROR;
       }
-      I2C_PRT("check_rx_isr: RWM clear, counter %d\n", counter);
+      I2C_PRT("check_rx_isr: RWM clear, waited %d uSec\n", 2 * (100 - counter));
     }
   } else {
     /*
@@ -597,23 +597,28 @@ check_rx_isr(uint32_t isr, bool stop)
 static int
 i2c_wait_rx_full(bool stop)
 {
-  int		counter, err;
+  int		uwt, counter, err;
   uint32_t	temp;
 
   I2C_PRT("i2c_wait_rx_full: entry, stop %d\n", stop);
   REG_REG("+i2c_wait_rx_full");
 
   /*
-   * Wait for receive to end (IRF set) in 200 uSec.
+   * Guess on how long one I2C clock cycle is (in uSec)
+   */
+  uwt = (bus_freq == FREQ_400K) ? 3 : 10;
+
+  /*
+   * Wait for receive to end (IRF set).
    * Since slave can hold the SCL to reduce the speed
    * we wait longer than we expect the receive to last.
    */
   counter = 100;
   err = INCOMPLETE_XFER;
-  while(counter--) {
+  while(counter) {
     temp = reg_read(ISR_OFFSET);
     if (temp & ISR_IRF) {
-      I2C_PRT("i2c_wait_rx_full: IRF, temp %02x, counter %d\n", temp, counter);
+      I2C_PRT("i2c_wait_rx_full: IRF, ISR %02x\n", temp);
       err = check_rx_isr(temp, stop);
       reg_write(ISR_OFFSET, reg_read(ISR_OFFSET) | ISR_IRF);
       switch(err) {
@@ -633,11 +638,12 @@ i2c_wait_rx_full(bool stop)
       }
       break;
     }
-    myDELAY(2);
+    myDELAY(uwt);
+    counter--;
   }
 
   REG_REG("-i2c_wait_rx_full");
-  I2C_PRT("i2c_wait_rx_full: done, counter %d, err %d\n", counter, err);
+  I2C_PRT("i2c_wait_rx_full: done, IRF wait %d uSec, err %d\n", uwt * (100 - counter), err);
   return err;
 }
 
@@ -673,14 +679,14 @@ check_tx_isr(uint32_t isr, bool stop, int op)
 
       I2C_PRT("check_rx_isr: UB\n");
       counter = 100;
-      while((reg_read(ISR_OFFSET) & ISR_UB) && counter--)
+      while((reg_read(ISR_OFFSET) & ISR_UB) && --counter)
         myDELAY(2);
       if (! counter) {
         REG_REG("-check_tx_isr");
-        I2C_PRT("check_tx_isr: UB, rtn %d\n", TX_CONTROLLER_ERROR);
+        I2C_PRT("check_tx_isr: UB, timeout %d uSec, rtn %d\n", 2 * 100, TX_CONTROLLER_ERROR);
         return TX_CONTROLLER_ERROR;
       }
-      I2C_PRT("check_tx_isr: UB clear, counter %d\n", counter);
+      I2C_PRT("check_tx_isr: !UB, waited %d uSec\n", 2 * (100 - counter));
     }
   } else {
     /*
@@ -735,21 +741,22 @@ i2c_wait_tx_empty(bool stop, int op)
    */
   counter = 100;
   err = INCOMPLETE_XFER;
-  while(counter--) {
+  while(counter) {
     temp = reg_read(ISR_OFFSET);
     if (temp & ISR_ITE) {
-      I2C_PRT("i2c_wait_tx_empty: ITE, temp %02x, counter %d\n", temp, counter);
-      myDELAY(2 * uwt);
+      I2C_PRT("i2c_wait_tx_empty: ITE, ISR %02x\n", temp);
+      myDELAY(uwt);
       temp = reg_read(ISR_OFFSET);
       err = check_tx_isr(temp, stop, op);
       reg_write(ISR_OFFSET, reg_read(ISR_OFFSET) | ISR_ITE);
       break;
     }
-    myDELAY(2);
+    myDELAY(uwt);
+    counter--;
   }
 
   REG_REG("-i2c_wait_tx_empty");
-  I2C_PRT("i2c_wait_tx_empty: done, counter %d, err %d\n", counter, err);
+  I2C_PRT("i2c_wait_tx_empty: done, ITE wait %d uSec, err %d\n", uwt * (100 - counter), err);
   return err;
 }
 
@@ -810,7 +817,9 @@ i2c_init(uint8_t slave_addr)
 
 
 /*
- * Stop current transaction
+ * Stop current transaction.
+ * If transmitting then do a master abort, otherwise
+ * just ensure that no new transmission starts.
  */
 
 static int
@@ -856,14 +865,18 @@ i2c_reset(void)
   i2c_stop();
 
   reg_write(ICR_OFFSET, ICR_UR);
+  myDELAY(1);
   reg_write(ISR_OFFSET, ~ISR_RESERVED);
+  myDELAY(1);
   reg_write(ICR_OFFSET, 0);
+  myDELAY(1);
   reg_write(ISAR_OFFSET, 0);
+  myDELAY(1);
   reg_write(ICR_OFFSET, ICR_INIT_BITS);
   bus_inited = 0;
 
   REG_REG("-i2c_reset");
-  I2C_PRT("i2c_reset: entry, bus_inited %d\n", bus_inited);
+  I2C_PRT("i2c_reset: exit, bus_inited %d\n", bus_inited);
   return 0;
 }
 
@@ -1145,9 +1158,17 @@ i2c_wr_byte(bool sendStop, uint8_t data)
  *  be straight forward to handle. 
  */
 
+#ifdef CONFIG_I2C_PXA
+#define PXA_SYNC	1
+#else
+#define PXA_SYNC	0
+#endif
+
+#if PXA_SYNC
 static uint32_t		sv_icr, sv_isr, sv_isar, sv_idbr, ee_term;
 extern char		pxa_state;
 extern atomic_t		pxa_block;
+#endif
 
 static void
 i2c_grab(void)
@@ -1159,22 +1180,34 @@ i2c_grab(void)
   I2C_PRT("i2c_grab: entry\n");
   REG_REG("+i2c_grab");
 
+#if PXA_SYNC
         sv_isar = reg_read(ISAR_OFFSET);
 	sv_idbr = reg_read(IDBR_OFFSET);
-  icr = sv_icr  = reg_read(ICR_OFFSET);
+        sv_icr  = reg_read(ICR_OFFSET);
   isr = sv_isr  = reg_read(ISR_OFFSET);
   if ((pxa_state == '-' || pxa_state == 'B') && !(isr & ISR_UB)) {
     REG_REG("-i2c_grab");
-    I2C_PRT("i2c_grab: bus idle\n");
+    I2C_PRT("i2c_grab: controller idle, isr %08x\n", isr);
     return;
   }
   ee_term = 1;
-  I2C_PRT("i2c_grab: bus active\n");
+  I2C_PRT("i2c_grab: controller active, pxa %c\n", pxa_state);
+#else
+  isr = reg_read(ISR_OFFSET);
+  if (!(isr & ISR_UB)) {
+    REG_REG("-i2c_grab");
+    I2C_PRT("i2c_grab: controller idle, isr %08x\n", isr);
+    return;
+  }
+  I2C_PRT("i2c_grab: controller active\n");
+  w = "-";
+#endif
 
   /*
    * Guess on how long one I2C clock cycle is (in uSec)
    * Note: ignore High-Speed modes, they are not used.
    */
+  icr = reg_read(ICR_OFFSET);
   uwt = (icr & ICR_FAST_MODE) ? 3 : 10;
 
   /*
@@ -1196,26 +1229,31 @@ i2c_grab(void)
     myDELAY(uwt);
     isr = reg_read(ISR_OFFSET);
   }
-  I2C_PRT("i2c_grab: wait %d uSec, UB %d\n", n * uwt, (isr & ISR_UB) == 0);
+  I2C_PRT("i2c_grab: ITE/IRF wait %d uSec, isr %02x, UB %d\n",
+  		n * uwt, isr, (isr & ISR_UB) == ISR_UB);
 
   /*
-   * Controller finished current byte transfer by now.
+   * Controller should have finished current byte transfer by now.
    * If it was last byte of a transaction, we are done.
    * In read mode we preserve the received data.
    */
   if (icr & ICR_STOP) {
+#if PXA_SYNC
     if (isr & ISR_RWM)
       sv_idbr = reg_read(IDBR_OFFSET);
-    REG_REG("-i2c_grab");
-    I2C_PRT("i2c_grab: easy case cleared\n");
-
+#endif
     for(n = 0; n < 100 && (isr & ISR_UB); n++) {
       myDELAY(uwt);
       isr = reg_read(ISR_OFFSET);
     }
-    goto grab_out;
+    
+    REG_REG("-i2c_grab");
+    I2C_PRT("i2c_grab: easy case, UB wait %d uSec, bus %sclear, icr %08x, isr %08x\n",
+    		n * uwt, (isr & ISR_UB) ? "NOT " : "", icr, isr);
+    return;
   }
 
+#if PXA_SYNC
   w = "?";
 
   if (pxa_state == 'I') {
@@ -1281,15 +1319,20 @@ i2c_grab(void)
     if (*w == 'b')
       sv_idbr = reg_read(IDBR_OFFSET);
   }
+#endif	/* PXA_SYNC */
 
-grab_out:
   REG_REG("-i2c_grab");
-  I2C_PRT("i2c_grab: bus clear\n");
+  I2C_PRT("i2c_grab: controller %sclear, icr %08x, isr %08x, w %s\n",
+  		(isr & ISR_UB) ? "NOT " : "", icr, isr, w);
 }
 
 static void
 i2c_release(void)
 {
+  I2C_PRT("i2c_release: entry\n");
+  REG_REG("+i2c_release");
+
+#if PXA_SYNC
 #if 0
   /*
    * Reset I2C controller before returning it to PXA driver
@@ -1297,15 +1340,13 @@ i2c_release(void)
    */
   if (ee_term) {
     I2C_PRT("i2c_release: resetting bus\n");
-    REG_REG("+i2c_release");
     reg_write(ICR_OFFSET, ICR_UR);
-    myDELAY(1);
+    myDELAY(2);
     reg_write(ICR_OFFSET, 0);
-    REG_REG("-i2c_release");
-    I2C_PRT("i2c_release: bus reset\n");
   }
 #endif
 
+  I2C_PRT("i2c_release: restore controller state\n");
   reg_write(ISR_OFFSET, sv_isr);
   reg_write(ICR_OFFSET, sv_icr & ~ICR_TB);
   reg_write(ISAR_OFFSET, sv_isar);
@@ -1313,9 +1354,13 @@ i2c_release(void)
 
   if (ee_term)
     ee_term = 0;
+#endif	/* PXA_SYNC */
 
   if (reg_read(IBMR_OFFSET) != 3)
-    ee_printk("i2c_release: WARNING: bus left active!!!\n");
+    I2C_PRT("i2c_release: WARNING: bus active!!!\n");
+
+  REG_REG("-i2c_release");
+  I2C_PRT("i2c_release: exit\n");
 }
 
 
@@ -1762,8 +1807,13 @@ cons_putc(int c)
  *  This can happen when/if ee_print() is used.
  */
 
+#ifdef CONFIG_I2C_PXA
+extern atomic_t pxa_block;
+extern char	pxa_state;
+#else
 atomic_t pxa_block = ATOMIC_INIT(0);
 char	 pxa_state = '-';
+#endif
 
 static void
 ee_lock(void)
@@ -2885,9 +2935,54 @@ EXPORT_SYMBOL_GPL(ee_wipe);
 int
 ee_init(void)
 {
+#if 0
+  /*
+   * Clocking the delay loop.
+   * Average results over 3 runs:
+   * uSec     % off
+   *   1	12.46
+   *   2	6.22
+   *   4	4.34
+   *   8	3.41
+   *   16	2.90
+   *   32	2.65
+   *   64	2.52
+   *   128	2.46
+   *   256	2.43
+   *   512	2.41
+   *   1024	2.41
+   *   2048	6.30
+   *   4096	2.43
+   *   8192	3.28
+   *   16384	3.30
+   *   32768	3.42
+   * , which is fine for the purposes in this driver.
+   */
+  {
+    uint64_t	t1, t2;
+    uint64_t	usec, pwr;
+
+    printk("RAS.test: tsc_khz %d\n", tsc_khz);
+    for(pwr = 0; pwr < 16; pwr++) {
+      usec = 1UL << pwr;
+      t1 = rdtsc();
+      myDELAY(usec);
+      t2 = rdtsc();
+      printk("RAS.test: myDelay(%lld) => %lld clocks\n", usec, t2 - t1);
+    }
+  }
+#endif
+    
 #ifdef CONFIG_MK1OM
   if (! mce_disabled) {
     McaHeader	hdr;
+
+#ifndef CONFIG_I2C_PXA
+    /*
+     * Reset I2C controller if PXA driver is not included in the kernel.
+     */
+    i2c_reset();
+#endif
 
     /*
      * Get I2C bus exclusive access
@@ -2895,52 +2990,67 @@ ee_init(void)
     ee_lock();
 
     /*
-     * Get EEPROM header and cache log state.
+     * Paranoia!!
+     * At this point the I2C controller should be inactive and
+     * the I2C bus should be idle. Verify this to be true.
+     * Note: This check is only applied on this very first
+     *       access to the I2C controller. If it passed the
+     *       two criterias we _assume_ we have good hardware.
+     * TBD: should we assume that the I2C subsystem can go bad
+     *      at runtime and add more checking?
      */
-    ee_rd(MR_ELOG_ADDR_LO, 0, (uint8_t *) &hdr, sizeof(hdr));
-    if (memcmp(hdr.signature, elog_preset.signature, sizeof(elog_preset.signature)) ||
-        hdr.header_ver != elog_preset.header_ver ||
-	hdr.rec_start != elog_preset.rec_start ||
-	hdr.rec_size != elog_preset.rec_size ||
-	hdr.hwtype != elog_preset.hwtype) {
-      printk("RAS.elog: Found un-initialized EEPROM, initializing ..\n");
-      ee_wr(MR_ELOG_ADDR_LO, 0, (uint8_t *) &elog_preset, sizeof(elog_preset));
-      ee_rd(MR_ELOG_ADDR_LO, 0, (uint8_t *) &hdr, sizeof(hdr));
+    ee_num = 0;
+    if ((reg_read(ISR_OFFSET) & ISR_UB) || (reg_read(IBMR_OFFSET) != 3)) {
+      printk("RAS.elog: I2C unit out of control, cannot access EEPROM\n");
     }
+    else {
+      /*
+       * Get EEPROM header and cache log state.
+       */
+      ee_rd(MR_ELOG_ADDR_LO, 0, (uint8_t *) &hdr, sizeof(hdr));
+      if (memcmp(hdr.signature, elog_preset.signature, sizeof(elog_preset.signature)) ||
+	  hdr.header_ver != elog_preset.header_ver ||
+	  hdr.rec_start != elog_preset.rec_start ||
+	  hdr.rec_size != elog_preset.rec_size ||
+	  hdr.hwtype != elog_preset.hwtype) {
+	printk("RAS.elog: Found un-initialized EEPROM, initializing ..\n");
+	ee_wr(MR_ELOG_ADDR_LO, 0, (uint8_t *) &elog_preset, sizeof(elog_preset));
+	ee_rd(MR_ELOG_ADDR_LO, 0, (uint8_t *) &hdr, sizeof(hdr));
+      }
+
+      if (memcmp(hdr.signature, elog_preset.signature, sizeof(elog_preset.signature)) ||
+	  hdr.header_ver != elog_preset.header_ver ||
+	  hdr.rec_start != elog_preset.rec_start ||
+	  hdr.rec_size != elog_preset.rec_size ||
+	  hdr.hwtype != elog_preset.hwtype) {
+	/*
+	 * Write to EEPROM header failed.
+	 * Leave a message in the kernel log about it and set capacity to 0.
+	 */ 
+	printk("RAS.elog: Error: EEPROM initialization failed!\n");
+      }
+      else {
+	ee_num  = hdr.entries;
+	ee_head = hdr.rec_head;
+	ee_tail = hdr.rec_tail;
+	printk("RAS.elog: rev %d, size %d, head %d, tail %d\n",
+		    hdr.header_ver, ee_num, ee_head, ee_tail);
+	if (ee_head != ee_tail) {
+	  /*
+	   *TBD: should we be aggressive and replay these events to the host
+	   *     when it opens the MC SCIF channel to force the issue?
+	   */
+	  printk("RAS.elog: Warning: MCA log has unprocessed entries\n");
+	}
+      }
+    }
+    if (!ee_num)
+      printk("RAS.elog: MCA events cannot be logged to EEPROM\n");
 
     /*
      * Release I2C bus exclusive lock
      */
     ee_unlock();
-
-    if (memcmp(hdr.signature, elog_preset.signature, sizeof(elog_preset.signature)) ||
-        hdr.header_ver != elog_preset.header_ver ||
-	hdr.rec_start != elog_preset.rec_start ||
-	hdr.rec_size != elog_preset.rec_size ||
-	hdr.hwtype != elog_preset.hwtype) {
-      /*
-       * Write to EEPROM header failed.
-       * Leave a message in the kernel log about it and set capacity to 0.
-       */ 
-      printk("RAS.elog: Error: EEPROM initialization failed!\n");
-      printk("RAS.elog: MCA events cannot be logged to EEPROM\n");
-      ee_num = 0;
-    }
-    else {
-      ee_num  = hdr.entries;
-      ee_head = hdr.rec_head;
-      ee_tail = hdr.rec_tail;
-      printk("RAS.elog: rev %d, size %d, head %d, tail %d\n",
-		  hdr.header_ver, ee_num, ee_head, ee_tail);
-      if (ee_head != ee_tail) {
-	/*
-	 *TBD: should we be aggressive and replay these events to the host
-	 *     when it opens the MC SCIF channel to force the issue?
-	 */
-	printk("RAS.elog: Warning: MCA log has unprocessed entries\n");
-      }
-    }
-
   }
 #endif /* CONFIG_MK1OM */
 
@@ -3014,6 +3124,7 @@ ee_exit(void)
     elog_pe = 0;
   }
 #endif
+
 
   /*
    * Reset I2C bus & UART (sort of, internal reset only)

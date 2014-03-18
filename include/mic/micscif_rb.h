@@ -80,6 +80,14 @@
 #include <linux/netdevice.h>
 #include <linux/debugfs.h>
 
+/**
+ * This version is used to ensure component compatibility between the host and
+ * card driver modules that use the ring buffer functions. This version should
+ * be incremented whenever there is a change to the ring buffer module that
+ * affects the functionality of the ring buffer.
+ */
+#define RING_BUFFER_VERSION	1
+
 /* Two of these actually form a single queue -- one on each side of the PCIe
  * bus
  *
@@ -159,4 +167,8 @@ void micscif_rb_update_read_ptr(struct micscif_rb *rb);
  */
 uint32_t micscif_rb_count(struct micscif_rb *rb, uint32_t size);
 
+/**
+ *  Return the ring buffer module version.
+ */
+uint16_t micscif_rb_get_version(void);
 #endif

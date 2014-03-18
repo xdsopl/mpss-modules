@@ -122,9 +122,15 @@ struct micvnet_msg_dma_complete {
 	uint64_t dma_offset;
 };
 
+#define VNET_DRIVER_VERSION	1
+struct micvnet_msg_link_up {
+	uint64_t vnet_driver_version;
+};
+
 union micvnet_msg_body {
 	struct micvnet_msg_add_dma_buffer	micvnet_msg_add_dma_buffer;
 	struct micvnet_msg_dma_complete		micvnet_msg_dma_complete;
+	struct micvnet_msg_link_up		micvnet_msg_link_up;
 };
 
 struct micvnet_msg {

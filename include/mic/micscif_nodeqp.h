@@ -176,11 +176,12 @@ struct micscif_qp {
 	dma_addr_t 	local_buf;  /* Local BS */
 	dma_addr_t 	local_qp;
 	dma_addr_t 	remote_buf; /* Remote BS */
-	spinlock_t 		qp_send_lock;
-	spinlock_t 		qp_recv_lock;
 	volatile uint32_t	qp_state;
 #define QP_OFFLINE	0xdead
 #define QP_ONLINE	0xc0de
+	uint16_t		scif_version;
+	spinlock_t 		qp_send_lock;
+	spinlock_t 		qp_recv_lock;
 };
 
 /*

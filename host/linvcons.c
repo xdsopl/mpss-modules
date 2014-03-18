@@ -409,6 +409,7 @@ static int
 micvcons_readport(micvcons_port_t *port)
 {
 	int num_chars_read = 0, status;
+	static uint32_t prev_mic_magic;
 	struct vcons_buf *vcons_host_header;
 
 	if (!port || !port->dp_vcons)
@@ -422,8 +423,16 @@ micvcons_readport(micvcons_port_t *port)
 
 	vcons_host_header = (struct vcons_buf *)port->dp_vcons->dc_hdr_virt;
 	if ((vcons_host_header->mic_magic != MIC_VCONS_READY) &&
-			(vcons_host_header->mic_magic != MIC_VCONS_SLEEPING))
+			(vcons_host_header->mic_magic != MIC_VCONS_SLEEPING)) {
+		if ((vcons_host_header->mic_magic == MIC_VCONS_RB_VER_ERR)
+			&& (vcons_host_header->mic_magic != prev_mic_magic)) {
+			printk(KERN_ERR "Card and host ring buffer versions mismatch.");
+			printk(KERN_ERR "Card version: %d, Host version: %d \n", 
+						vcons_host_header->mic_rb_ver, 
+						vcons_host_header->host_rb_ver);
+		}
 		goto exit;
+	}
 	if (!port->dp_in) {
 		status = micvcons_initport(port);
 		if (status != 0) {
@@ -448,6 +457,7 @@ micvcons_readport(micvcons_port_t *port)
 		}
 	}
 exit:
+	prev_mic_magic = vcons_host_header->mic_magic;
 	spin_unlock_bh(&port->dp_lock);
 	return num_chars_read;
 }

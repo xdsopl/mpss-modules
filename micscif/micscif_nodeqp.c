@@ -356,6 +356,7 @@ int micscif_setup_card_qp(phys_addr_t host_phys, struct micscif_dev *scifdev)
 	dma_addr_t qp_offset;
 	int err = 0;
 	struct nodemsg tmp_msg;
+	uint16_t host_scif_ver;
 
 	pr_debug("Got 0x%llx from the host\n", host_phys);
 
@@ -375,6 +376,14 @@ int micscif_setup_card_qp(phys_addr_t host_phys, struct micscif_dev *scifdev)
 	err = micscif_setup_qp_accept(&scifdev->qpairs[0], &qp_offset, host_phys, local_size, scifdev);
 
 	if (!err) {
+		host_scif_ver = readw(&(&scifdev->qpairs[0])->remote_qp->scif_version);
+		if (host_scif_ver != SCIF_VERSION) {
+			printk(KERN_ERR "Card and host SCIF versions do not match. \n");
+			printk(KERN_ERR "Card version: %u, Host version: %u \n", 
+						SCIF_VERSION, host_scif_ver);
+			err = -ENXIO;
+			goto error_exit;
+		}
 		/* now that everything is setup and mapped, we're ready to tell the
 		 * host where our queue's location
 		 */
@@ -386,6 +395,7 @@ int micscif_setup_card_qp(phys_addr_t host_phys, struct micscif_dev *scifdev)
 		pr_debug("micscif_setup_card_qp: micscif_setup_qp_accept, INIT message\n");
 		err = micscif_nodeqp_send(scifdev, &tmp_msg, NULL);
 	}
+error_exit:
 	if (err)
 		printk(KERN_ERR "%s %d error %d\n", 
 				__func__, __LINE__, err);
@@ -430,6 +440,7 @@ int micscif_setup_host_qp(mic_ctx_t *mic_ctx, struct micscif_dev *scifdev)
 	}
 
 	scifdev->qpairs->magic = SCIFEP_MAGIC;
+	scifdev->qpairs->scif_version = SCIF_VERSION;
 	err = micscif_setup_qp_connect(&scifdev->qpairs[0], &(mic_ctx->bi_scif.si_pa), local_size, scifdev);
 	/* fake the read pointer setup so we can use the inbound q */
 	scifdev->qpairs[0].inbound_q.read_ptr = &tmp_r_ptr;

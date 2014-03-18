@@ -357,6 +357,7 @@ struct reg_range_t {
 
 	/* Array specifying number of pages for each physical address */
 	int				*num_pages;
+	struct mm_struct		*mm;
 } __attribute__ ((packed));
 
 
@@ -864,5 +865,72 @@ set_window_ref_count(struct reg_range_t *window, int64_t nr_pages)
 
 /* Debug API's */
 void micscif_display_window(struct reg_range_t *window, const char *s, int line);
+static inline struct mm_struct *__scif_acquire_mm(void)
+{
+	if (mic_ulimit_check) {
+#ifdef RMA_DEBUG
+		atomic_long_add_return(1, &ms_info.rma_mm_cnt);
+#endif
+		return get_task_mm(current);
+	}
+	return NULL;
+}
 
+static inline void __scif_release_mm(struct mm_struct *mm)
+{
+	if (mic_ulimit_check && mm) {
+#ifdef RMA_DEBUG
+		WARN_ON(atomic_long_sub_return(1, &ms_info.rma_mm_cnt) < 0);
+#endif
+		mmput(mm);
+	}
+}
+
+static inline int __scif_dec_pinned_vm_lock(struct mm_struct *mm,
+					int64_t nr_pages, bool try_lock)
+{
+	if (mm && nr_pages && mic_ulimit_check) {
+		if (try_lock) {
+			if (!down_write_trylock(&mm->mmap_sem)) {
+				return -1;
+			}
+		} else {
+			down_write(&mm->mmap_sem);
+		}
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 1, 0))
+		mm->pinned_vm -= nr_pages;
+#else
+		mm->locked_vm -= nr_pages;
+#endif
+		up_write(&mm->mmap_sem);
+	}
+	return 0;
+}
+
+static inline int __scif_check_inc_pinned_vm(struct mm_struct *mm,
+					     int64_t nr_pages)
+{
+	if (mm && mic_ulimit_check && nr_pages) {
+		unsigned long locked, lock_limit;
+		locked = nr_pages;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 1, 0))
+		locked += mm->pinned_vm;
+#else
+		locked += mm->locked_vm;
+#endif
+		lock_limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
+		if ((locked > lock_limit) && !capable(CAP_IPC_LOCK)) {
+			pr_debug("locked(%lu) > lock_limit(%lu)\n", 
+				    locked, lock_limit);
+			return -ENOMEM;
+		} else {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 1, 0))
+			mm->pinned_vm = locked;
+#else
+			mm->locked_vm = locked;
+#endif
+		}
+	}
+	return 0;
+}
 #endif

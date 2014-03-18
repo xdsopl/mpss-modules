@@ -457,14 +457,27 @@ static void
 micvnet_msg_send_link_up_msg(struct micvnet_info *vnet_info)
 {
 	struct micvnet_msg msg;
+	struct micvnet_msg_link_up
+		*body = &msg.body.micvnet_msg_link_up;
 
 	msg.msg_id = MICVNET_MSG_LINK_UP;
+	body->vnet_driver_version = VNET_DRIVER_VERSION;
 	micvnet_msg_send_msg(vnet_info, &msg);
 }
 
 static void
-micvnet_msg_recv_msg_link_up(struct micvnet_info *vnet_info)
+micvnet_msg_recv_msg_link_up(struct micvnet_info *vnet_info,
+			     struct micvnet_msg_link_up *msg)
 {
+	if (msg->vnet_driver_version != VNET_DRIVER_VERSION) {
+		printk(KERN_ERR "%s: Error: vnet driver version mismatch: "
+			"expected %d actual %lld\n"
+			"Ensure that host and card modules are "
+			"from the same build.\n", 
+			__func__, VNET_DRIVER_VERSION, 
+			msg->vnet_driver_version);
+		return;
+	}
 #ifdef HOST
 	schedule_work(&vnet_info->vi_ws_start);
 #else
@@ -499,7 +512,8 @@ micvnet_msg_process_messages(struct micvnet_info *vnet_info)
 			break;
 
 		case MICVNET_MSG_LINK_UP:
-			micvnet_msg_recv_msg_link_up(vnet_info);
+			micvnet_msg_recv_msg_link_up(vnet_info,
+						&msg.body.micvnet_msg_link_up);
 			break;
 
 		default:
@@ -823,10 +837,12 @@ err_exit:
 	return NETDEV_TX_OK;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0)
 static void
 micvnet_multicast_list(struct net_device *dev)
 {
 }
+#endif
 
 static int
 micvnet_set_address(struct net_device *dev, void *p)
@@ -895,7 +911,9 @@ static const struct net_device_ops micvnet_netdev_ops = {
 	.ndo_stop		= micvnet_stop_dev,
 	.ndo_start_xmit		= micvnet_xmit,
 	.ndo_validate_addr	= eth_validate_addr,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,2,0)
 	.ndo_set_multicast_list = micvnet_multicast_list,
+#endif
 	.ndo_set_mac_address	= micvnet_set_address,
 	.ndo_change_mtu		= micvnet_change_mtu,
 };
@@ -1475,8 +1493,6 @@ micvnet_execute_stop(struct micvnet_info *vnet_info)
 			vnet_info->stop_waitq, 
 			(atomic_read(&vnet_info->vi_state) == MICVNET_STATE_BEGIN_UNINIT), 
 			STOP_WAIT_TIMEOUT);
-		if (!ret)
-			printk(KERN_ERR "%s: timeout waiting for link down message response\n", __func__);
 	}
 
 #ifdef HOST

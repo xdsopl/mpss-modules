@@ -42,12 +42,17 @@
 #include <linux/ktime.h>
 #include <linux/sched.h>
 #include <linux/kref.h>
+#include <linux/module.h>
 #include "scif.h"
 #include "mic/micscif.h"
 #ifndef _MIC_SCIF_
 #include "mic_common.h"
 #endif
 #include "mic/micscif_map.h"
+
+#define SCIF_MAP_ULIMIT 0x40
+
+bool mic_ulimit_check = 0;
 
 char *scif_ep_states[] = {
 	"Closed",
@@ -437,11 +442,12 @@ __scif_flush(scif_epd_t epd)
 			/* Now wait for the remote node to respond */
 			wait_event_timeout(ep->disconwq, 
 				(ep->state == SCIFEP_DISCONNECTED), NODE_ALIVE_TIMEOUT);
-
-		spin_lock_irqsave(&ep->lock, sflags);
+		spin_lock_irqsave(&ms_info.mi_connlock, sflags);
+		spin_lock(&ep->lock);
 		list_add_tail(&ep->list, &ms_info.mi_disconnected);
 		ep->state = SCIFEP_DISCONNECTED;
-		spin_unlock_irqrestore(&ep->lock, sflags);
+		spin_unlock(&ep->lock);
+		spin_unlock_irqrestore(&ms_info.mi_connlock, sflags);
 		// Wake up threads blocked in send and recv
 		wake_up_interruptible(&ep->sendwq);
 		wake_up_interruptible(&ep->recvwq);
@@ -1811,10 +1817,13 @@ __scif_pin_pages(void *addr, size_t len, int *out_prot,
 	bool vmalloc_addr = false;
 	bool try_upgrade = false;
 	int prot = *out_prot;
+	int ulimit = 0;
+	struct mm_struct *mm = NULL;
 
 	/* Unsupported flags */
-	if (map_flags & ~SCIF_MAP_KERNEL)
+	if (map_flags & ~(SCIF_MAP_KERNEL | SCIF_MAP_ULIMIT))
 		return -EINVAL;
+	ulimit = !!(map_flags & SCIF_MAP_ULIMIT);
 
 	/* Unsupported protection requested */
 	if (prot & ~(SCIF_PROT_READ | SCIF_PROT_WRITE))
@@ -1855,18 +1864,27 @@ __scif_pin_pages(void *addr, size_t len, int *out_prot,
 			try_upgrade = true;
 		prot |= SCIF_PROT_WRITE;
 retry:
-		down_read(&current->mm->mmap_sem);
+		mm = current->mm;
+		down_write(&mm->mmap_sem);
+		if (ulimit) {
+			err = __scif_check_inc_pinned_vm(mm, nr_pages);
+			if (err) {
+				up_write(&mm->mmap_sem);
+				pinned_pages->nr_pages = 0;
+				goto error_unmap;
+			}
+		}
 
 		pinned_pages->nr_pages = get_user_pages(
 				current,
-				current->mm,
+				mm,
 				(uint64_t)addr,
 				nr_pages,
 				!!(prot & SCIF_PROT_WRITE),
 				0,
 				pinned_pages->pages,
 				pinned_pages->vma);
-		up_read(&current->mm->mmap_sem);
+		up_write(&mm->mmap_sem);
 		if (nr_pages == pinned_pages->nr_pages) {
 #ifdef RMA_DEBUG
 			atomic_long_add_return(nr_pages, &ms_info.rma_pin_cnt);
@@ -1874,6 +1892,12 @@ retry:
 			micscif_detect_large_page(pinned_pages, addr);
 		} else {
 			if (try_upgrade) {
+				if (ulimit)
+					__scif_dec_pinned_vm_lock(mm, nr_pages, 0);
+#ifdef RMA_DEBUG
+				WARN_ON(atomic_long_sub_return(1,
+						&ms_info.rma_mm_cnt) < 0);
+#endif
 				/* Roll back any pinned pages */
 				for (i = 0; i < pinned_pages->nr_pages; i++) {
 					if (pinned_pages->pages[i])
@@ -1890,15 +1914,19 @@ retry:
 	if (pinned_pages->nr_pages < nr_pages) {
 		err = -EFAULT;
 		pinned_pages->nr_pages = nr_pages;
-		goto error_unmap;
+		goto dec_pinned;
 	}
 
 	*out_prot = prot;
 	atomic_set(&pinned_pages->ref_count, nr_pages);
 	*pages = pinned_pages;
 	return err;
-error_unmap:
+dec_pinned:
+	if (ulimit)
+		__scif_dec_pinned_vm_lock(mm, nr_pages, 0);
 	/* Something went wrong! Rollback */
+error_unmap:
+	pinned_pages->nr_pages = nr_pages;
 	micscif_destroy_pinned_pages(pinned_pages);
 	*pages = NULL;
 	pr_debug("%s %d err %d len 0x%lx\n", __func__, __LINE__, err, len);
@@ -2386,6 +2414,7 @@ __scif_register(scif_epd_t epd, void *addr, size_t len, off_t offset,
 	struct endpt *ep = (struct endpt *)epd;
 	uint64_t computed_offset;
 	struct reg_range_t *window;
+	struct mm_struct *mm = NULL;
 
 	pr_debug("SCIFAPI register: ep %p %s addr %p len 0x%lx"
 		" offset 0x%lx prot 0x%x map_flags 0x%x\n", 
@@ -2449,17 +2478,24 @@ __scif_register(scif_epd_t epd, void *addr, size_t len, off_t offset,
 		return err;
 	}
 
+	if (!(map_flags & SCIF_MAP_KERNEL)) {
+		mm = __scif_acquire_mm();
+		map_flags |= SCIF_MAP_ULIMIT;
+	}
 	/* Pin down the pages */
 	if ((err = scif_pin_pages(addr, len, prot,
-			map_flags & SCIF_MAP_KERNEL, &pinned_pages))) {
+			map_flags & (SCIF_MAP_KERNEL | SCIF_MAP_ULIMIT),
+			&pinned_pages))) {
 		micscif_destroy_incomplete_window(ep, window);
 		micscif_dec_node_refcnt(ep->remote_dev, 1);
-		return err;
+		__scif_release_mm(mm);
+		goto error;
 	}
 
 	window->pinned_pages = pinned_pages;
 	window->nr_contig_chunks = pinned_pages->nr_contig_chunks;
 	window->prot = pinned_pages->prot;
+	window->mm = mm;
 
 	/* Prepare the remote registration window */
 	if ((err = micscif_prep_remote_window(ep, window))) {
@@ -2490,6 +2526,7 @@ __scif_register(scif_epd_t epd, void *addr, size_t len, off_t offset,
 	return computed_offset;
 error_unmap:
 	micscif_destroy_window(ep, window);
+error:
 	printk(KERN_ERR "%s %d err %ld\n", __func__, __LINE__, err);
 	return err;
 }

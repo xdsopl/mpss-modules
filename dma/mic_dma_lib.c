@@ -48,6 +48,9 @@
 #include<linux/bitops.h>
 #ifdef _MIC_SCIF_
 #include <asm/mic/mic_common.h>
+#ifdef CONFIG_PAGE_CACHE_DMA
+#include <linux/mic_dma/mic_dma_callback.h>
+#endif
 #endif
 
 #ifndef _MIC_SCIF_
@@ -1274,6 +1277,25 @@ void dma_prep_suspend(mic_dma_handle_t dma_handle)
 EXPORT_SYMBOL(dma_prep_suspend);
 #endif
 
+#ifdef CONFIG_PAGE_CACHE_DMA
+#ifdef _MIC_SCIF_
+static const struct dma_operations dma_operations_fast_copy = {
+	.do_dma               = do_dma,
+	.poll_dma_completion  = poll_dma_completion,
+	.free_dma_channel     = free_dma_channel,
+	.open_dma_device      = open_dma_device,
+	.close_dma_device     = close_dma_device,
+	.allocate_dma_channel = allocate_dma_channel,
+	.program_descriptors  = program_memcpy_descriptors,
+	.do_dma_polling				= DO_DMA_POLLING,
+};
+
+static const struct file_dma fdma_callback = {
+	.dmaops = &dma_operations_fast_copy,
+};
+#endif
+#endif
+
 #ifdef _MIC_SCIF_
 static int
 #else
@@ -1285,11 +1307,21 @@ mic_dma_init(void)
 
 	for (i = 0; i < MAX_BOARD_SUPPORTED; i++)
 		mutex_init (&lock_dma_dev_init[i]);
+#ifdef CONFIG_PAGE_CACHE_DMA
+#ifdef _MIC_SCIF_
+	register_dma_for_fast_copy(&fdma_callback);
+#endif
+#endif
 	return 0;
 }
 
 #ifdef _MIC_SCIF_
-static void mic_dma_uninit(void){}
+static void mic_dma_uninit(void)
+{
+#ifdef CONFIG_PAGE_CACHE_DMA
+	unregister_dma_for_fast_copy();
+#endif
+}
 
 module_init(mic_dma_init);
 module_exit(mic_dma_uninit);

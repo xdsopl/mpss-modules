@@ -41,6 +41,7 @@
 
 
 #include "mic_common.h"
+#include <linux/module.h>
 
 /* helper methods for debugging/unit testing /*/
 static int check_test_msg(mic_ctx_t *mic_ctx, void *buf, uint32_t len);

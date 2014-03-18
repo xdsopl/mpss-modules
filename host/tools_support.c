@@ -291,7 +291,7 @@ send_flash_cmd(mic_ctx_t *mic_ctx, MIC_FLASH_CMD_TYPE type, void *data, uint32_t
 		SBOX_WRITE(scratch1reg.value, mmio_va, SBOX_SCRATCH1);
 
 		mic_send_bootstrap_intr(mic_ctx);
-
+		0;
 
 	break;
 
@@ -410,6 +410,8 @@ int get_cardside_mem(mic_ctx_t *mic_ctx, uint64_t start, uint64_t size, void *de
 	next_page = 0;
 
 	pages = kmalloc(nr_pages * sizeof(struct page*), GFP_KERNEL);
+	if (!pages)
+		return -ENOMEM;
 	status = mic_pin_user_pages(dest, pages, (uint32_t)len, &nf_pages, (int32_t)nr_pages);
 
 	if (status)
@@ -699,13 +701,17 @@ sku_build_table(mic_ctx_t *mic_ctx)
 	list_add_tail(&newnode->sku, &mic_data.sku_table[0]);
 	sku_create_node(158, 250, SKU_HIGH_MEM, FREQ_5P0, "B1PRQ-5110P/5120D", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[0]);
-	sku_create_node(251, 254, SKU_HIGH_MEM, FREQ_5P0, "C0-5110P", &newnode);
+	sku_create_node(251, 253, SKU_HIGH_MEM, FREQ_5P0, "C0-5110P", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[0]);
-	sku_create_node(251, 254, SKU_HIGH_MEM, FREQ_5P5, "C0-5120D", &newnode);
+	sku_create_node(254, 255, SKU_HIGH_MEM, FREQ_5P0, "C0QS-5110P", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[0]);
-	sku_create_node(255, 350, SKU_HIGH_MEM, FREQ_5P0, "C0 QS-5110P", &newnode);
+	sku_create_node(251, 253, SKU_HIGH_MEM, FREQ_5P5, "C0-5120D", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[0]);
-	sku_create_node(255, 350, SKU_HIGH_MEM, FREQ_5P5, "C0 QS-5120D", &newnode);
+	sku_create_node(254, 255, SKU_HIGH_MEM, FREQ_5P5, "C0QS-5120D", &newnode);
+	list_add_tail(&newnode->sku, &mic_data.sku_table[0]);
+	sku_create_node(256, 350, SKU_HIGH_MEM, FREQ_5P0, "C0PRQ-5110P/5140P", &newnode);
+	list_add_tail(&newnode->sku, &mic_data.sku_table[0]);
+	sku_create_node(256, 350, SKU_HIGH_MEM, FREQ_5P5, "C0PRQ-5120D/5140D", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[0]);
 
 	/*2251*/
@@ -791,13 +797,15 @@ sku_build_table(mic_ctx_t *mic_ctx)
 	list_add_tail(&newnode->sku, &mic_data.sku_table[12]);
 	sku_create_node(157, 157, SKU_HIGH_MEM, FREQ_5P5, "B1PRQ-7110 P/A/X", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[12]);
-	sku_create_node(158, 159, SKU_HIGH_MEM, FREQ_5P5, "B1PRQ-7110 P/X", &newnode);
+	sku_create_node(158, 202, SKU_HIGH_MEM, FREQ_5P5, "B1PRQ-7110 P/X", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[12]);
-	sku_create_node(201, 202, SKU_HIGH_MEM, FREQ_5P5, "B2QS-7110 P/X", &newnode);
+	sku_create_node(203, 250, SKU_HIGH_MEM, FREQ_5P5, "B1PRQ-SE10 P/X", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[12]);
-	sku_create_node(203, 203, SKU_HIGH_MEM, FREQ_5P5, "B2PRQ-SE10 P/X", &newnode);
+	sku_create_node(251, 253, SKU_HIGH_MEM, FREQ_5P5, "C0-7120 P/A/X/D", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[12]);
-	sku_create_node(251, 350, SKU_HIGH_MEM, FREQ_5P5, "C0-7120 P/A/X/D", &newnode);
+	sku_create_node(254, 255, SKU_HIGH_MEM, FREQ_5P5, "C0QS-7120 P/A/X/D", &newnode);
+	list_add_tail(&newnode->sku, &mic_data.sku_table[12]);
+	sku_create_node(256, 350, SKU_HIGH_MEM, FREQ_5P5, "C0PRQ-7120 P/A/X/D", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[12]);
 
 	/*225D*/
@@ -821,29 +829,25 @@ sku_build_table(mic_ctx_t *mic_ctx)
 	list_add_tail(&newnode->sku, &mic_data.sku_table[13]);
 	sku_create_node(155, 155, SKU_LOW_MEM, FREQ_5P0, "B1QS-3110P", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[13]);
-	sku_create_node(158, 159, SKU_HIGH_MEM, FREQ_5P0, "B1PRQ-3120P", &newnode);
+	sku_create_node(158, 250, SKU_HIGH_MEM, FREQ_5P0, "B1PRQ-3120P", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[13]);
-	sku_create_node(201, 202, SKU_HIGH_MEM, FREQ_5P0, "B2QS/3120P", &newnode);
+	sku_create_node(251, 253, SKU_HIGH_MEM, FREQ_5P0, "C0-3120 P/A", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[13]);
-	sku_create_node(203, 203, SKU_HIGH_MEM, FREQ_5P0, "B2PRQ-3120P", &newnode);
+	sku_create_node(254, 255, SKU_HIGH_MEM, FREQ_5P0, "C0QS-3120 P/A", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[13]);
-	sku_create_node(251, 254, SKU_HIGH_MEM, FREQ_5P0, "C0-3120 P/A", &newnode);
-	list_add_tail(&newnode->sku, &mic_data.sku_table[13]);
-	sku_create_node(255, 350, SKU_HIGH_MEM, FREQ_5P0, "C0 QS-3120 P/A", &newnode);
+	sku_create_node(256, 350, SKU_HIGH_MEM, FREQ_5P0, "C0PRQ-3120/3140 P/A", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[13]);
 
 	/*225E*/
 	sku_create_node(157, 157, SKU_HIGH_MEM, FREQ_5P0, "B1PRQ-31S1P", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[14]);
-	sku_create_node(158, 159, SKU_HIGH_MEM, FREQ_5P0, "B1PRQ-31S1P", &newnode);
+	sku_create_node(158, 250, SKU_HIGH_MEM, FREQ_5P0, "B1PRQ-31S1P", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[14]);
-	sku_create_node(201, 202, SKU_HIGH_MEM, FREQ_5P0, "B2QS-31S1P", &newnode);
+	sku_create_node(251, 253, SKU_HIGH_MEM, FREQ_5P0, "C0-31S1P", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[14]);
-	sku_create_node(203, 203, SKU_HIGH_MEM, FREQ_5P0, "B2PRQ-31S1P", &newnode);
+	sku_create_node(254, 255, SKU_HIGH_MEM, FREQ_5P0, "C0QS-31S1P", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[14]);
-	sku_create_node(251, 254, SKU_HIGH_MEM, FREQ_5P0, "C0-31S1P", &newnode);
-	list_add_tail(&newnode->sku, &mic_data.sku_table[14]);
-	sku_create_node(255, 350, SKU_HIGH_MEM, FREQ_5P0, "C0 QS-31S1P", &newnode);
+	sku_create_node(256, 350, SKU_HIGH_MEM, FREQ_5P0, "C0PRQ-31S1P", &newnode);
 	list_add_tail(&newnode->sku, &mic_data.sku_table[14]);
 
 

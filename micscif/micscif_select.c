@@ -42,6 +42,7 @@
 #include <linux/sched.h>
 #include <linux/file.h>
 #include <linux/hrtimer.h>
+#include <linux/module.h>
 
 #include "mic/micscif.h"
 
