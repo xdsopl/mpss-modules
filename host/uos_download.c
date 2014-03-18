@@ -800,7 +800,6 @@ exit:
 		mic_setstate(mic_ctx, MIC_ONLINE);
 		mic_ctx->boot_count++;
 		printk("ELF booted succesfully\n");
-		0;
 	}
 	return status;
 }
@@ -933,7 +932,6 @@ void ramoops_flip(mic_ctx_t *mic_ctx);
 int
 adapter_shutdown_device(mic_ctx_t *mic_ctx)
 {
-	0;
 
 	if (micpm_get_reference(mic_ctx, true))
 		return 0;
@@ -957,7 +955,6 @@ adapter_shutdown_device(mic_ctx_t *mic_ctx)
 int
 adapter_stop_device(mic_ctx_t *mic_ctx, int wait_reset, int reattempt)
 {
-	0;
 
 	micvcons_stop(mic_ctx);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34) || \
