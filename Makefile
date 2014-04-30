@@ -54,7 +54,7 @@ INSTALL_d = $(INSTALL) -d
 INSTALL_x = $(INSTALL)
 INSTALL_f = $(INSTALL) -m644
 
-prefix = /usr/local
+prefix =
 sysconfdir = $(prefix)/etc
 includedir = $(prefix)/include
 
@@ -62,17 +62,18 @@ kmodinstalldir = /lib/modules/$(KERNEL_VERSION)
 kmodincludedir = $(realpath $(KERNEL_SRC))/include/modules
 
 # If building the host's driver for a MIC co-processor card, which card
-# $(ARCH) it should support
+# $(ARCH) it should support (k1om by default)
+MIC_CARD_ARCH = k1om
 export MIC_CARD_ARCH
 
-.PHONY: all install modules
+.PHONY: all install modules clean
 .PHONY: modules_install conf_install dev_install kdev_install
 
 all: modules
 
 install: modules_install conf_install kdev_install
 
-modules modules_install: %:
+modules modules_install clean: %:
 	$(MAKE) -C $(KERNEL_SRC) M=$(CURDIR) $* \
 		INSTALL_MOD_PATH=$(DESTDIR)
 
