@@ -1,17 +1,26 @@
 # default options
-PREFIX= # empty means install into root
+SYSCONFDIR=/etc
+INCLUDEDIR=/usr/include
 ARCH=k1om
-CONFIG=1
+INSTALL_CONFIG=1
+INSTALL_HEADER=1
 
 # parse some extra arguments
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--no-config )
-		CONFIG=0
+		INSTALL_CONFIG=0
 		shift ;;
-	-p  | --prefix )
+	--no-header )
+		INSTALL_HEADER=0
+		shift ;;
+	--sysconfdir )
 		[ $# -ge 2 ] || { echo "error: '$1' requires parameter" &1>2; exit 1; }
-		PREFIX="$2"
+		SYSCONFDIR="$2"
+		shift 2 ;;
+	--includedir )
+		[ $# -ge 2 ] || { echo "error: '$1' requires parameter" &1>2; exit 1; }
+		INCLUDEDIR="$2"
 		shift 2 ;;
 	-a  | --arch )
 		[ $# -ge 2 ] || { echo "error: '$1' requires parameter" &1>2; exit 1; }
@@ -22,10 +31,12 @@ while [ $# -gt 0 ]; do
 		$0 [options]
 
 		flags:
-		  --no-config  do not install config files into /etc
+		  --no-config  do not install config files into $SYSCONFDIR
+		  --no-header  do not install header files into $INCLUDEDIR
 
 		options:
-		  -p, --prefix PREFIX   prefix for configuration files installation
+		  --sysconfdir DIR      common directory for system configuration files (default: $SYSCONFDIR)
+		  --includedir DIR      common directory for developer header files (default: $INCLUDEDIR)
 		  -k, --kernel VERSION  kernel version [manual install] (auto-detected)
 		  -a, --arch   ARCH     driver architecture (default: $ARCH)
 		END
@@ -36,7 +47,7 @@ done
 
 # require root
 if [ $EUID -ne 0 ]; then
-	echo "$0 must be run under as root. Try: 'sudo $0'" 1>&2
+	echo "$0 must be run as root. Try: 'sudo $0'" 1>&2
 	exit 1
 fi
 

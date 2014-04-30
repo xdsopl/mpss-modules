@@ -1,12 +1,11 @@
-#!/bin/bash
-set -e # stop on error
+#! /bin/bash -e
 . common.sh
 
 # install driver source code
 if [ ! -d "$SRC" ]; then
 	echo "Installing source to: $SRC"
 	# extract files into /usr/src
-	git archive --prefix="$TAG/" HEAD | sudo tar -x -C /usr/src
+	git archive --prefix="$TAG/" HEAD | tar -x -C /usr/src/
 	# write DKMS config
 	cat >"$SRC/dkms.conf" <<-END
 		PACKAGE_NAME=$NAME
@@ -23,7 +22,13 @@ dkms add $NAME/$VERSION
 dkms install $NAME/$VERSION
 
 # install additional udev rules
-if [ $CONFIG -eq 1 ]; then
-	echo "Installing configuration into: $PREFIX/etc"
-	make MIC_CARD_ARCH=$ARCH prefix=$PREFIX conf_install
+if ((INSTALL_CONFIG)); then
+	echo "Installing configuration into: $SYSCONFDIR"
+	make MIC_CARD_ARCH=$ARCH sysconfdir=$SYSCONFDIR conf_install
+fi
+
+# install additional developer header files
+if ((INSTALL_HEADER)); then
+	echo "Installing developer header files into: $INCLUDEDIR"
+	make MIC_CARD_ARCH=$ARCH includedir=$INCLUDEDIR dev_install
 fi

@@ -1,5 +1,4 @@
-#!/bin/bash
-set -e # stop on error
+#! /bin/bash -e
 . common.sh
 
 # remove DKMS module
@@ -10,3 +9,7 @@ if [ -d "$SRC" ]; then
 	echo "Removing source from: $SRC"
 	rm -rf "$SRC"
 fi
+
+echo "Not removing config files in $SYSCONFDIR"
+echo "Not removing developer header files in $INCLUDEDIR"
+
