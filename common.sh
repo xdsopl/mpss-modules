@@ -45,12 +45,6 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-# require root
-if [ $EUID -ne 0 ]; then
-	echo "$0 must be run as root. Try: 'sudo $0'" 1>&2
-	exit 1
-fi
-
 # check if DKMS is present, otherwise show some instructions
 if [ -z "$(which dkms 2>/dev/null)" ]; then
 	echo -n "$0 expects DKMS to be installed." 1>&2
@@ -62,6 +56,12 @@ if [ -z "$(which dkms 2>/dev/null)" ]; then
 		echo
 		echo "Install without DKMS using: 'make && sudo make install'"
 	fi
+	exit 1
+fi
+
+# require root
+if [ $EUID -ne 0 ]; then
+	echo "$0 must be run as root. Try: 'sudo $0'" 1>&2
 	exit 1
 fi
 
