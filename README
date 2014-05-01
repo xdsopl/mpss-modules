@@ -10,5 +10,8 @@ the "devel" branch.
 please checkout the "minimal" branch if youre only interested in the smallest
 necessary fixes possible to make it work.
 
-to install, edit (if needed) and execute "install.sh"
+to install, edit Makefile (if needed) and execute "make && sudo make install"
+
+for installation using DKMS, execute "sudo ./install.sh"
+to deinstall DKMS module, execute "sudo ./uninstall.sh"
 
