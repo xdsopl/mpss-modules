@@ -262,8 +262,12 @@ void micscif_cleanup_scifdev(struct micscif_dev *dev, bool destroy_wq)
 			&dev->scif_ref_cnt, 0, SCIF_NODE_IDLE);
 		cpu_relax();
 	} while (ret && ret != SCIF_NODE_IDLE);
+
+	mutex_unlock(&dev->sd_lock);
 	/* Cleanup temporary registered windows */
 	flush_workqueue(ms_info.mi_misc_wq);
+	mutex_lock(&dev->sd_lock);
+
 #ifdef _MIC_SCIF_
 	drain_dma_global(mic_dma_handle);
 #else
