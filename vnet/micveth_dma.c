@@ -987,7 +987,7 @@ micvnet_init_interrupts(struct micvnet_info *vnet_info)
 		 "VNET WQ %d", mic_ctx->bi_id);
 
 	if (!(vnet_info->vi_wq =
-	      create_singlethread_workqueue(vnet_info->vi_wqname))) {
+	      __mic_create_singlethread_workqueue(vnet_info->vi_wqname))) {
 		printk(KERN_ERR "%s: create_singlethread_workqueue\n", __func__);
 		return -ENOMEM;
 	}

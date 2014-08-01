@@ -281,7 +281,6 @@ dma_addr_t smpt_op(int bid, uint64_t dma_addr,
 	mic_ctx_t *mic_ctx = get_per_dev_ctx(bid);
 	mic_smpt_t *mic_smpt = mic_ctx->mic_smpt;
 
-	might_sleep();
 	if (micpm_get_reference(mic_ctx, true))
 		goto exit;
 	spin_lock_irqsave(&mic_ctx->smpt_lock, flags);

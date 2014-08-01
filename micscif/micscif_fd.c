@@ -140,7 +140,9 @@ scif_process_ioctl(struct file *f, unsigned int cmd, uint64_t arg)
 	void __user *argp = (void __user *)arg;
 	int err = 0;
 	struct scifioctl_msg request;
+	bool non_block = false;
 
+	non_block = !!(f->f_flags & O_NONBLOCK);
 
 	switch (cmd) {
 	case SCIF_BIND:
@@ -172,7 +174,7 @@ scif_process_ioctl(struct file *f, unsigned int cmd, uint64_t arg)
 			return -EFAULT;
 		}
 
-		if ((err = __scif_connect(priv->epd, &req.peer)) < 0) {
+		if ((err = __scif_connect(priv->epd, &req.peer, non_block)) < 0) {
 			return err;
 		}
 

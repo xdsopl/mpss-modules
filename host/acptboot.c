@@ -172,7 +172,7 @@ acptboot_init(void)
 						acptboot_data->acptboot_pn);
 
 	// Create workqueue
-	acptboot_data->acptbootwq = create_singlethread_workqueue(
+	acptboot_data->acptbootwq = __mic_create_singlethread_workqueue(
 							"ACPTBOOT_WQ");
 
 	if (!acptboot_data->acptbootwq) {

@@ -931,6 +931,7 @@ int do_idlestate_exit(mic_ctx_t *mic_ctx, bool get_ref) {
 	if(!mic_ctx)
 		return -EINVAL;
 
+	might_sleep();
 	/* If the idle_state_mutex is already obtained by another thread
 	 * try to wakeup the thread which MAY be waiting for REMOVE_NODE
 	 * responses. This way, we give priority to idle state exits than

@@ -1548,6 +1548,7 @@ mr_get_svid(uint8_t vr, uint8_t cap, uint8_t imax, struct mr_rsp_vrr * vrr)
 }
 #endif
 
+#define KNC_DFF_BOARD   2       /*  DFF/SFF board */
 
 int
 mr_get_power(void * p)
@@ -1671,15 +1672,17 @@ mr_get_power(void * p)
     if (power.pcie.p_val != 0x3)
       power.pcie.prr  = 1000000 * GET_BITS(15, 0, pcie);
   }
-  if (! mr_smc_rd(MR_SMC_PWR_2X3,  &p2x3)) {
-    power.c2x3.p_val = GET_BITS(31, 30, p2x3);
-    if (power.c2x3.p_val != 0x3)
-      power.c2x3.prr  = 1000000 * GET_BITS(15, 0, p2x3);
-  }
-  if (! mr_smc_rd(MR_SMC_PWR_2X4,  &p2x4)) {
-    power.c2x4.p_val = GET_BITS(31, 30, p2x4);
-    if (power.c2x4.p_val != 0x3)
-      power.c2x4.prr  = 1000000 * GET_BITS(15, 0, p2x4);
+  if (hwinf.board != KNC_DFF_BOARD) {
+    if (! mr_smc_rd(MR_SMC_PWR_2X3,  &p2x3)) {
+      power.c2x3.p_val = GET_BITS(31, 30, p2x3);
+      if (power.c2x3.p_val != 0x3)
+        power.c2x3.prr  = 1000000 * GET_BITS(15, 0, p2x3);
+    }
+    if (! mr_smc_rd(MR_SMC_PWR_2X4,  &p2x4)) {
+      power.c2x4.p_val = GET_BITS(31, 30, p2x4);
+      if (power.c2x4.p_val != 0x3)
+        power.c2x4.prr  = 1000000 * GET_BITS(15, 0, p2x4);
+    }
   }
 #endif
 

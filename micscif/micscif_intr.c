@@ -40,6 +40,7 @@
 #include "mic/micscif.h"
 #include "mic/micscif_intr.h"
 #include "mic/micscif_nodeqp.h"
+#include "mic_common.h"
 
 /* Runs in the context of sd_intr_wq */
 static void micscif_intr_bh_handler(struct work_struct *work)
@@ -65,7 +66,7 @@ int micscif_setup_interrupts(struct micscif_dev *scifdev)
 
 		/* FIXME: Fix windows */
 		if (!(scifdev->sd_intr_wq =
-			create_singlethread_workqueue(scifdev->sd_intr_wqname)))
+			__mic_create_singlethread_workqueue(scifdev->sd_intr_wqname)))
 			return -ENOMEM;
 
 		INIT_WORK(&scifdev->sd_intr_bh, micscif_intr_bh_handler);

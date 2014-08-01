@@ -40,7 +40,6 @@
 #include "mic/micscif.h"
 #include "mic/micscif_rb.h"
 
-#include <linux/module.h>
 #include <linux/circ_buf.h>
 #include <linux/module.h>
 #define count_in_ring(head, tail, size)    CIRC_CNT(head, tail, size)

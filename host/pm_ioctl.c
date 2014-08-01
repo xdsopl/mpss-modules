@@ -40,7 +40,6 @@
 /* contains code to handle MIC IO control codes */
 
 
-#include <linux/module.h>
 #include "mic_common.h"
 #include <linux/module.h>
 

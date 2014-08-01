@@ -38,18 +38,17 @@
  *     of fds to overcome nfds < 16390 descriptors limit (Tigran Aivazian).
  */
 
-#include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
-#include <linux/version.h>
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,9,0)
-#include <linux/sched/rt.h>
-#endif
 #include <linux/file.h>
 #include <linux/hrtimer.h>
 #include <linux/module.h>
 
 #include "mic/micscif.h"
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+#include <linux/sched/rt.h>
+#endif
 
 struct poll_table_page {
 	struct poll_table_page *next;
@@ -238,10 +237,10 @@ static void __pollwait(struct file *filp __attribute__((unused)), wait_queue_hea
 		return;
 	entry->filp = NULL;
 	entry->wait_address = wait_address;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0)
-	entry->key = p->key;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+	entry->key = p->_key;
 #else
-	entry->key = poll_requested_events(p);
+	entry->key = p->key;
 #endif
 	init_waitqueue_func_entry(&entry->wait, pollwake);
 	entry->wait.private = pwq;
@@ -297,12 +296,11 @@ static inline unsigned int do_pollfd(struct scif_pollepd *pollfd, poll_table *pw
 		mask = POLLNVAL;
 		mask = DEFAULT_POLLMASK;
 		if (pwait)
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0)
-			pwait->key = pollfd->events |
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+			pwait->_key = pollfd->events | POLLERR | POLLHUP;
 #else
-			pwait->_key = pollfd->events |
+			pwait->key = pollfd->events | POLLERR | POLLHUP;
 #endif
-					POLLERR | POLLHUP;
 		mask = scif_poll_kernel(pwait, epd);
 		/* Mask out unneeded events. */
 		mask &= pollfd->events | POLLERR | POLLHUP;

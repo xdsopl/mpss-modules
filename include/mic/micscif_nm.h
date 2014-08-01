@@ -51,12 +51,7 @@
 #else
 #define DEFAULT_WATCHDOG_TO	(30)
 #define NODE_ALIVE_TIMEOUT	(ms_info.mi_watchdog_to * HZ)
-/*
- * This timeout must be less than NODE_ALIVE_TIMEOUT because
- * SCIF_NODE_ADD_ACK response thread might block the node alive
- * acknowledgment from being sent back in time.
- */
-#define NODE_QP_TIMEOUT		((ms_info.mi_watchdog_to * 1000) / 3)
+#define NODE_QP_TIMEOUT		(100)
 #define NODE_ACCEPT_TIMEOUT	(3 * HZ)
 #define NODEQP_SEND_TO_MSEC	(3 * 1000)
 #endif

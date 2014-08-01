@@ -43,9 +43,7 @@
 #include "mic/micscif_nodeqp.h"
 #include "mic/micscif_intr.h"
 #include "mic/micscif_nm.h"
-#ifndef _MIC_SCIF_
 #include "mic_common.h"
-#endif
 #include "mic/micscif_map.h"
 
 #define SBOX_MMIO_LENGTH	0x10000
@@ -967,32 +965,45 @@ interrupt_setup_error:
 }
 
 #ifdef _MIC_SCIF_
-/**
- * check_qp_state() - Check the qp state to confirm that nodes can access
- * each others qp info.
- * @qp:    Local qp info
- *
- * Returns:
- * 0 if qp state is equal to QP_ONLINE
- * 1 if qp state is equal to QP_OFFLINE
- */
-static int
-check_qp_state(struct micscif_qp *qp)
+static inline void scif_p2pdev_uninit(struct micscif_dev *peerdev)
 {
-	uint32_t wait_time = 0;
-
-	while (qp->qp_state == QP_OFFLINE) {
-		msleep(100);
-		if (wait_time == NODE_QP_TIMEOUT) {
-			printk(KERN_ERR "Warning: QP check timeout with "
-				"state %d\n", qp->qp_state);
-			return 1;
-		}
-		wait_time += 100;
-	}
-	return 0;
+	deregister_scif_intr_handler(peerdev);
+	iounmap(peerdev->mm_sbox);
+	mutex_lock(&peerdev->sd_lock);
+	peerdev->sd_state = SCIFDEV_NOTPRESENT;
+	mutex_unlock(&peerdev->sd_lock);
 }
 
+void scif_poll_qp_state(struct work_struct *work)
+{
+#define NODE_QP_RETRY 100
+	struct micscif_dev *peerdev = container_of(work, struct micscif_dev,
+							sd_p2p_dwork.work);
+	struct micscif_qp *qp = &peerdev->qpairs[0];
+
+	if (SCIFDEV_RUNNING != peerdev->sd_state)
+		return;
+	if (qp->qp_state == QP_OFFLINE) {
+		if (peerdev->sd_p2p_retry++ == NODE_QP_RETRY) {
+			printk(KERN_ERR "Warning: QP check timeout with "
+				"state %d\n", qp->qp_state);
+			goto timeout;
+		}
+		schedule_delayed_work(&peerdev->sd_p2p_dwork,
+			msecs_to_jiffies(NODE_QP_TIMEOUT));
+		return;
+	}
+	wake_up(&peerdev->sd_p2p_wq);
+	return;
+timeout:
+	printk(KERN_ERR "%s %d remote node %d offline,  state = 0x%x\n", 
+		__func__, __LINE__, peerdev->sd_node, qp->qp_state);
+	micscif_inc_node_refcnt(peerdev, 1);
+	qp->remote_qp->qp_state = QP_OFFLINE;
+	micscif_dec_node_refcnt(peerdev, 1);
+	scif_p2pdev_uninit(peerdev);
+	wake_up(&peerdev->sd_p2p_wq);
+}
 #endif
 
 /**
@@ -1070,26 +1081,12 @@ scif_nodeaddack_resp(struct micscif_dev *scifdev, struct nodemsg *msg)
 	/* accessing the peer qp. Make sure the peer is awake*/
 	micscif_inc_node_refcnt(peerdev, 1);
 	qp->remote_qp->qp_state = QP_ONLINE;
-
-	if (check_qp_state(qp))  {
-		qp->remote_qp->qp_state = QP_OFFLINE;
-		printk(KERN_ERR "%s %d remote node %d offline,  state = 0x%x\n", 
-			__func__, __LINE__, peerdev->sd_node, qp->qp_state);
-		goto remote_error;
-	}
-
 	micscif_dec_node_refcnt(peerdev, 1);
-	wake_up(&peerdev->sd_p2p_wq);
+	schedule_delayed_work(&peerdev->sd_p2p_dwork,
+		msecs_to_jiffies(NODE_QP_TIMEOUT));
 	return;
-
-remote_error:
-	micscif_dec_node_refcnt(peerdev, 1);
-	deregister_scif_intr_handler(peerdev);
 local_error:
-	iounmap(peerdev->mm_sbox);
-	mutex_lock(&peerdev->sd_lock);
-	peerdev->sd_state = SCIFDEV_NOTPRESENT;
-	mutex_unlock(&peerdev->sd_lock);
+	scif_p2pdev_uninit(peerdev);
 	wake_up(&peerdev->sd_p2p_wq);
 #endif
 }
@@ -1166,6 +1163,7 @@ scif_cnctgnt_resp(struct micscif_dev *scifdev, struct nodemsg *msg)
 		ep->peer.node = msg->src.node;
 		ep->peer.port = msg->src.port;
 		ep->qp_info.cnct_gnt_payload = msg->payload[1];
+		ep->remote_ep = msg->payload[2];
 		ep->state = SCIFEP_MAPPING;
 
 		wake_up_interruptible(&ep->conwq);
@@ -2411,6 +2409,7 @@ scif_node_connect_resp(struct micscif_dev *scifdev, struct nodemsg *msg)
 			ppi_list);
 			if (p2p->ppi_peer_id == dev_j->sd_node) {
 				mutex_unlock(&ms_info.mi_conflock);
+				micscif_dec_node_refcnt(dev_i, 1);
 				return;
 			}
 		}
@@ -2957,7 +2956,7 @@ int micscif_setup_loopback_qp(struct micscif_dev *scifdev)
 	snprintf(scifdev->sd_loopb_wqname, sizeof(scifdev->sd_loopb_wqname),
 			"SCIF LOOPB %d", scifdev->sd_node);
 	if (!(scifdev->sd_loopb_wq =
-		create_singlethread_workqueue(scifdev->sd_loopb_wqname))){
+		__mic_create_singlethread_workqueue(scifdev->sd_loopb_wqname))){
 		err = -ENOMEM;
 		goto destroy_intr_wq;
 	}
@@ -3151,9 +3150,9 @@ static void micscif_qp_testboth(struct micscif_dev *scifdev)
 	snprintf(scifdev->consumer_name, sizeof(scifdev->consumer_name),
 		 "CONSUMER %d", scifdev->sd_node);
 	scifdev->producer =
-		create_singlethread_workqueue(scifdev->producer_name);
+		__mic_create_singlethread_workqueue(scifdev->producer_name);
 	scifdev->consumer =
-		create_singlethread_workqueue(scifdev->consumer_name);
+		__mic_create_singlethread_workqueue(scifdev->consumer_name);
 
 	INIT_WORK(&scifdev->producer_work, micscif_rb_trigger_producer);
 	INIT_WORK(&scifdev->consumer_work, micscif_rb_trigger_consumer);

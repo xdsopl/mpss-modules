@@ -126,6 +126,9 @@ typedef struct micvcons_port {
 
 	volatile struct file	*dp_reader;
 	volatile struct file	*dp_writer;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+	struct tty_port		port;
+#endif
 } micvcons_port_t;
 
 /* vcons IPC layout */
