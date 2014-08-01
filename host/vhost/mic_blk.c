@@ -141,7 +141,11 @@ static void handle_io_work(struct work_struct *work)
 		ret = -1;
 	} else if (vbio->type & VIRTIO_BLK_T_FLUSH)  {
 #ifdef RHEL_RELEASE_CODE
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+		ret = vfs_fsync(vbio->file, 1);
+#else
 		ret = vfs_fsync(vbio->file, vbio->file->f_path.dentry, 1);
+#endif
 #else
 		ret = vfs_fsync(vbio->file, 1);
 #endif
@@ -449,7 +453,7 @@ static long vhost_blk_set_backend(struct vhost_blk *vblk)
 
 	snprintf(vblk->vb_wqname, sizeof(vblk->vb_wqname),
 		 "virtblk wq %d", index);
-	vblk->vb_wq = create_singlethread_workqueue(vblk->vb_wqname);
+	vblk->vb_wq = __mic_create_singlethread_workqueue(vblk->vb_wqname);
 	if (vblk->vb_wq == NULL) {
 		ret = -ENOMEM;
 		goto _exit_;
@@ -462,23 +466,23 @@ static long vhost_blk_set_backend(struct vhost_blk *vblk)
 	vq->log_addr = (u64)bd_info->bi_ctx.aper.va;
 
 	vb_shared = &((struct mic_virtblk *)bd_info->bi_virtio)->vb_shared;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+#else
 	writel(
 		   (1U << VIRTIO_BLK_F_SEG_MAX) |
 		   (1U << VIRTIO_BLK_F_BLK_SIZE) |
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,6,0)
 		   (1U << VIRTIO_BLK_F_FLUSH),
-#else
-		   (1U << VIRTIO_BLK_F_WCE),
-#endif
 		   &vb_shared->host_features);
+#endif
 	writel(DISK_SEG_MAX, &vb_shared->blk_config.seg_max);
 	writel(SECTOR_SIZE, &vb_shared->blk_config.blk_size);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+	stat.size = (loff_t)0;  // CAZ TODO this is temportary until you fix this code.
+	stat.mode = (umode_t)0;
+#else
 	ret = vfs_getattr(vblk->virtblk_file->f_path.mnt,
 					  vblk->virtblk_file->f_path.dentry, &stat);
-#else
-	ret = vfs_getattr(&vblk->virtblk_file->f_path, &stat);
 #endif
 	if (ret < 0)
 		goto _exit_;
@@ -625,7 +629,7 @@ int mic_vhost_blk_probe(bd_info_t *bd_info)
 
 	BUG_ON(bd_info->bi_ctx.bi_id >= 1000);
 	snprintf(wq_name, ARRAY_SIZE(wq_name), "vblk%03d", bd_info->bi_ctx.bi_id);
-	vblk->vblk_workqueue = create_singlethread_workqueue(wq_name);
+	vblk->vblk_workqueue = __mic_create_singlethread_workqueue(wq_name);
 	if (vblk->vblk_workqueue == NULL) {
 		ret = -ENOMEM;
 		goto free_vblk;

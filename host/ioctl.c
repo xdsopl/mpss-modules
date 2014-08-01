@@ -133,6 +133,7 @@ adapter_do_ioctl(uint32_t cmd, uint64_t arg)
 			return status;
 		}
 
+		;
 		break;
 	}
 

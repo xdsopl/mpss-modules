@@ -93,6 +93,7 @@ extern mic_dma_handle_t mic_dma_handle;
 
 static int mic_pm_qos_cpu_dma_lat = -1;
 static int mic_host_numa_node = -1;
+static unsigned long mic_p2p_proxy_thresh = -1;
 
 #ifdef CONFIG_MK1OM
 static int micscif_devevent_handler(struct notifier_block *nb,
@@ -201,6 +202,8 @@ void micscif_destroy_base(void)
 	destroy_workqueue(ms_info.mi_mmu_notif_wq);
 #endif
 	destroy_workqueue(ms_info.mi_misc_wq);
+	destroy_workqueue(ms_info.mi_conn_wq);
+
 	sysfs_remove_group(&micinfo.m_scifdev->kobj, &scif_attr_group);
 	device_destroy(micinfo.m_class, micinfo.m_dev + 1);
 	device_destroy(micinfo.m_class, micinfo.m_dev);
@@ -350,6 +353,7 @@ static int micscif_setup_base(void)
 	spin_lock_init(&ms_info.mi_connlock);
 	spin_lock_init(&ms_info.mi_rmalock);
 	mutex_init(&ms_info.mi_fencelock);
+	mutex_init(&ms_info.mi_nb_connect_lock);
 	INIT_LIST_HEAD(&ms_info.mi_uaccept);
 	INIT_LIST_HEAD(&ms_info.mi_listen);
 	INIT_LIST_HEAD(&ms_info.mi_zombie);
@@ -357,6 +361,8 @@ static int micscif_setup_base(void)
 	INIT_LIST_HEAD(&ms_info.mi_disconnected);
 	INIT_LIST_HEAD(&ms_info.mi_rma);
 	INIT_LIST_HEAD(&ms_info.mi_rma_tc);
+	INIT_LIST_HEAD(&ms_info.mi_nb_connect_list);
+
 #ifdef CONFIG_MMU_NOTIFIER
 	INIT_LIST_HEAD(&ms_info.mi_mmu_notif_cleanup);
 #endif
@@ -366,10 +372,15 @@ static int micscif_setup_base(void)
 		goto remove_group;
 	}
 	INIT_WORK(&ms_info.mi_misc_work, micscif_misc_handler);
+	if (!(ms_info.mi_conn_wq = create_singlethread_workqueue("SCIF_NB_CONN"))) {
+		result = -ENOMEM;
+		goto destroy_misc_wq;
+	}
+	INIT_WORK(&ms_info.mi_conn_work, micscif_conn_handler);
 #ifdef CONFIG_MMU_NOTIFIER
 	if (!(ms_info.mi_mmu_notif_wq = create_singlethread_workqueue("SCIF_MMU"))) {
 		result = -ENOMEM;
-		goto destroy_misc_wq;
+		goto destroy_conn_wq;
 	}
 	INIT_WORK(&ms_info.mi_mmu_notif_work, micscif_mmu_notif_handler);
 #endif
@@ -380,9 +391,13 @@ static int micscif_setup_base(void)
 	ms_info.mi_watchdog_enabled = 1;
 #endif
 	ms_info.mi_rma_tc_limit = SCIF_RMA_TEMP_CACHE_LIMIT;
-	ms_info.mi_proxy_dma_threshold = SCIF_PROXY_DMA_THRESHOLD;
+	ms_info.mi_proxy_dma_threshold = mic_p2p_proxy_thresh;
 	ms_info.en_msg_log = 0;
 	return result;
+#ifdef CONFIG_MMU_NOTIFIER
+destroy_conn_wq:
+	destroy_workqueue(ms_info.mi_conn_wq);
+#endif
 destroy_misc_wq:
 	destroy_workqueue(ms_info.mi_misc_wq);
 remove_group:
@@ -433,6 +448,9 @@ static int micscif_init(void)
 		init_waitqueue_head(&scif_dev[i].sd_mmap_wq);
 		init_waitqueue_head(&scif_dev[i].sd_wq);
 		init_waitqueue_head(&scif_dev[i].sd_p2p_wq);
+		INIT_DELAYED_WORK(&scif_dev[i].sd_p2p_dwork,
+			scif_poll_qp_state);
+		scif_dev[i].sd_p2p_retry = 0;
 	}
 
 	// Setup the host node access information
@@ -496,17 +514,11 @@ static int micscif_init(void)
 		goto close_dma;
 
 	pr_debug("micscif_init(): host_intr_handler \n");
-	/*
-	 * Register the interrupt
-	 */
-	if ((result = register_scif_intr_handler(&scif_dev[SCIF_HOST_NODE])))
-		goto destroy_intr_wq;
-
 	if ((result = micscif_setup_card_qp(host_queue_phys, &scif_dev[SCIF_HOST_NODE]))) {
 		if (result == -ENXIO)
 			goto uninit_qp;
 		else
-			goto dereg_intr_handle;
+			goto destroy_intr_wq;
 	}
 	/* need to do this last -- as soon as the dev is setup, userspace
 	 * can try to use the device
@@ -514,6 +526,11 @@ static int micscif_init(void)
 	pr_debug("micscif_init(): setup_base \n");
 	if ((result = micscif_setup_base()))
 		goto uninit_qp;
+	/*
+	 * Register the interrupt
+	 */
+	if ((result = register_scif_intr_handler(&scif_dev[SCIF_HOST_NODE])))
+		goto destroy_base;
 
 	// Setup information for self aka loopback.
 	scif_dev[ms_info.mi_nodeid].sd_node = ms_info.mi_nodeid;
@@ -526,7 +543,7 @@ static int micscif_init(void)
 	init_waitqueue_head(&scif_dev[ms_info.mi_nodeid].sd_mmap_wq);
 	mutex_init(&scif_dev[ms_info.mi_nodeid].sd_lock);
 	if ((result = micscif_setup_loopback_qp(&scif_dev[ms_info.mi_nodeid])))
-		goto destroy_base;
+		goto dereg_intr_handle;
 	scif_dev[ms_info.mi_nodeid].sd_state = SCIFDEV_RUNNING;
 
 	unaligned_cache = micscif_kmem_cache_create();
@@ -563,13 +580,13 @@ cache_destroy:
 	micscif_kmem_cache_destroy();
 destroy_loopb:
 	micscif_destroy_loopback_qp(&scif_dev[ms_info.mi_nodeid]);
+dereg_intr_handle:
+	deregister_scif_intr_handler(&scif_dev[SCIF_HOST_NODE]);
 destroy_base:
 	pr_debug("Unable to finish scif setup for some reason: %d\n", result);
 	micscif_destroy_base();
 uninit_qp:
 	micscif_uninit_qp(&scif_dev[SCIF_HOST_NODE]);
-dereg_intr_handle:
-	deregister_scif_intr_handler(&scif_dev[SCIF_HOST_NODE]);
 destroy_intr_wq:
 	micscif_destroy_interrupts(&scif_dev[SCIF_HOST_NODE]);
 close_dma:
@@ -606,6 +623,9 @@ MODULE_PARM_DESC(pm_qos_cpu_dma_lat, "PM QoS CPU DMA latency in usecs.");
 
 module_param_named(numa_node, mic_host_numa_node, int, 0600);
 MODULE_PARM_DESC(numa_node, "Host Numa node to which MIC is attached");
+
+module_param_named(p2p_proxy_thresh, mic_p2p_proxy_thresh, ulong, 0600);
+MODULE_PARM_DESC(numa_node, "Transfer size after which Proxy DMA helps DMA perf");
 
 MODULE_LICENSE("GPL");
 MODULE_INFO(build_number, BUILD_NUMBER);

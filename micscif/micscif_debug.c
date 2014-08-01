@@ -42,8 +42,6 @@
 #include "mic_common.h"
 #endif
 #include "scif.h"
-#include <linux/module.h>
-#include <linux/seq_file.h>
 #include <linux/proc_fs.h>
 #include <linux/debugfs.h>
 
@@ -67,7 +65,9 @@ static struct dentry *mic_debug = NULL;
 
 #define DEBUG_LEN 10
 
-static int scif_ep_show(struct seq_file *m, void *v)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+static int
+scif_ep_show(struct seq_file *m, void *data)
 {
 	struct endpt *ep;
 	struct list_head *pos;
@@ -98,8 +98,7 @@ static int scif_ep_show(struct seq_file *m, void *v)
 	}
 	spin_unlock_irqrestore(&ms_info.mi_connlock, sflags);
 
-	seq_printf(m,
-		"EP Address         State      Port  Peer     Remote Ep Address reg_list "
+	seq_printf(m, "EP Address         State      Port  Peer     Remote Ep Address reg_list "
 		"remote_reg_list mmn_list tw_refcount tcw_refcount mi_rma mi_rma_tc "
 		"task_list mic_mmu_notif_cleanup\n");
 	seq_printf(m, "=================================================================\n");
@@ -129,20 +128,21 @@ static int scif_ep_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static int scif_ep_open(struct inode *inode, struct file *file)
+static int
+scif_ep_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, scif_ep_show, PDE_DATA(inode));
+	return single_open(file, scif_ep_show, NULL);
 }
 
-static const struct file_operations scif_ep_fops = {
-	.owner   = THIS_MODULE,
-	.open    = scif_ep_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = single_release
+struct file_operations scif_ep_fops = {
+	.open		= scif_ep_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+        .release 	= single_release,
 };
 
-static int scif_rma_window_show(struct seq_file *m, void *v)
+static int
+scif_rma_window_show(struct seq_file *m, void *data)
 {
 	struct endpt *ep;
 	struct list_head *pos, *item, *tmp;
@@ -159,7 +159,7 @@ static int scif_rma_window_show(struct seq_file *m, void *v)
 		if (mutex_trylock(&ep->rma_info.rma_lock)) {
 			list_for_each_safe(item, tmp, &ep->rma_info.reg_list) {
 				window = list_entry(item, struct reg_range_t, list_member);
-				seq_printf(m,
+				seq_printf(m, 
 					"%-16p\t%-16s 0x%-16llx %-16lld %-8d %-8d %-8d\n",
 					ep, window_type[window->type], window->offset,
 					window->nr_pages, window->prot, window->ref_count,
@@ -167,7 +167,7 @@ static int scif_rma_window_show(struct seq_file *m, void *v)
 			}
 			list_for_each_safe(item, tmp, &ep->rma_info.remote_reg_list) {
 				window = list_entry(item, struct reg_range_t, list_member);
-				seq_printf(m,
+				seq_printf(m, 
 					"%-16p\t%-16s 0x%-16llx %-16lld %-8d %-8d %-8d\n",
 					ep, window_type[window->type], window->offset,
 					window->nr_pages, window->prot, window->ref_count,
@@ -175,7 +175,9 @@ static int scif_rma_window_show(struct seq_file *m, void *v)
 			}
 			mutex_unlock(&ep->rma_info.rma_lock);
 		} else
-			seq_printf(m, "Try Again, some other thread has the RMA lock for ep %p\n", ep);
+			seq_printf(m, 
+					"Try Again, some other thread has the RMA lock for ep %p\n",
+					ep);
 	}
 	spin_unlock_irqrestore(&ms_info.mi_connlock, sflags);
 
@@ -187,7 +189,7 @@ static int scif_rma_window_show(struct seq_file *m, void *v)
 		if (mutex_trylock(&ep->rma_info.rma_lock)) {
 			list_for_each_safe(item, tmp, &ep->rma_info.reg_list) {
 				window = list_entry(item, struct reg_range_t, list_member);
-				seq_printf(m,
+				seq_printf(m, 
 					"%-16p\t%-16s 0x%-16llx %-16lld %-8d %-8d %-8d\n",
 					ep, window_type[window->type], window->offset,
 					window->nr_pages, window->prot, window->ref_count,
@@ -195,7 +197,7 @@ static int scif_rma_window_show(struct seq_file *m, void *v)
 			}
 			list_for_each_safe(item, tmp, &ep->rma_info.remote_reg_list) {
 				window = list_entry(item, struct reg_range_t, list_member);
-				seq_printf(m,
+				seq_printf(m, 
 					"%-16p\t%-16s 0x%-16llx %-16lld %-8d %-8d %-8d\n",
 					ep, window_type[window->type], window->offset,
 					window->nr_pages, window->prot, window->ref_count,
@@ -203,7 +205,9 @@ static int scif_rma_window_show(struct seq_file *m, void *v)
 			}
 			mutex_unlock(&ep->rma_info.rma_lock);
 		} else
-			seq_printf(m, "Try Again, some other thread has the RMA lock for ep %p\n", ep);
+			seq_printf(m, 
+					"Try Again, some other thread has the RMA lock for ep %p\n",
+					ep);
 	}
 	spin_unlock_irqrestore(&ms_info.mi_eplock, sflags);
 	seq_printf(m, "=================================================================\n");
@@ -214,8 +218,7 @@ static int scif_rma_window_show(struct seq_file *m, void *v)
 		window = list_entry(item, 
 				struct reg_range_t, list_member);
 		ep = (struct endpt *)window->ep;
-		seq_printf(m,
-			"%-16p\t%-16s 0x%-16llx %-16lld %-8d %-8d %-8d\n",
+		seq_printf(m, "%-16p\t%-16s 0x%-16llx %-16lld %-8d %-8d %-8d\n",
 			ep, window_type[window->type], window->offset,
 			window->nr_pages, window->prot, window->ref_count,
 			window->unreg_state);
@@ -225,20 +228,21 @@ static int scif_rma_window_show(struct seq_file *m, void *v)
 	return 0;
 }
 
-static int scif_rma_window_open(struct inode *inode, struct file *file)
+static int
+scif_rma_window_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, scif_rma_window_show, PDE_DATA(inode));
+	return single_open(file, scif_rma_window_show, NULL);
 }
 
-static const struct file_operations scif_rma_window_fops = {
-	.owner   = THIS_MODULE,
-	.open    = scif_rma_window_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = single_release
+struct file_operations scif_rma_window_fops = {
+	.open		= scif_rma_window_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+        .release 	= single_release,
 };
 
-static int scif_rma_xfer_show(struct seq_file *m, void *v)
+static int
+scif_rma_xfer_show(struct seq_file *m, void *data)
 {
 	struct endpt *ep;
 	struct list_head *pos;
@@ -257,84 +261,27 @@ static int scif_rma_xfer_show(struct seq_file *m, void *v)
 			ep->rma_info.dma_chan ? get_chan_num(ep->rma_info.dma_chan): -1);
 	}
 	spin_unlock_irqrestore(&ms_info.mi_connlock, sflags);
-
 	return 0;
 }
 
-static int scif_rma_xfer_open(struct inode *inode, struct file *file)
+static int
+scif_rma_xfer_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, scif_rma_xfer_show, PDE_DATA(inode));
+	return single_open(file, scif_rma_xfer_show, NULL);
 }
 
-static const struct file_operations scif_rma_xfer_fops = {
-	.owner   = THIS_MODULE,
-	.open    = scif_rma_xfer_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = single_release
+struct file_operations scif_rma_xfer_fops = {
+	.open		= scif_rma_xfer_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+        .release 	= single_release,
 };
 
-/* Place Holder for generic SCIF debug information */
-static int scif_debug_show(struct seq_file *m, void *v)
-{
-	seq_printf(m, "Num gtt_entries %d\n", ms_info.nr_gtt_entries);
-	/*
-	 * Tracking the number of zombies for debug.
-	 * Need to make sure they are not being left behind forever.
-	 */
-	seq_printf(m, "Num Zombie Endpoints %d\n", ms_info.mi_nr_zombies);
-
-	seq_printf(m, "Watchdog timeout %d\n", ms_info.mi_watchdog_to);
-
-	seq_printf(m, "Watchdog enabled %d\n", ms_info.mi_watchdog_enabled);
-
-	seq_printf(m, "Watchdog auto reboot %d\n", ms_info.mi_watchdog_auto_reboot);
-
-	seq_printf(m, "Huge Pages Enabled %d Detected 2mb %lld 4k %lld\n",
-		mic_huge_page_enable, ms_info.nr_2mb_pages, ms_info.nr_4k_pages);
-#ifdef RMA_DEBUG
-	seq_printf(m,
-		"mm ref cnt %ld rma_alloc_cnt %ld rma_pin_cnt %ld mmu_notif %ld rma_unaligned_cpu_cnt %ld\n",
-		atomic_long_read(&ms_info.rma_mm_cnt),
-		atomic_long_read(&ms_info.rma_alloc_cnt),
-		atomic_long_read(&ms_info.rma_pin_cnt),
-		atomic_long_read(&ms_info.mmu_notif_cnt),
-		atomic_long_read(&ms_info.rma_unaligned_cpu_cnt));
-#endif
-	seq_printf(m,
-		"List empty? mi_uaccept %d mi_listen %d mi_zombie %d "
-		"mi_connected %d mi_disconnected %d\n",
-		list_empty(&ms_info.mi_uaccept),
-		list_empty(&ms_info.mi_listen),
-		list_empty(&ms_info.mi_zombie),
-		list_empty(&ms_info.mi_connected),
-		list_empty(&ms_info.mi_disconnected));
-
-	return 0;
-}
-
-static int scif_debug_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, scif_debug_show, PDE_DATA(inode));
-}
-
-static const struct file_operations scif_debug_fops = {
-	.owner   = THIS_MODULE,
-	.open    = scif_debug_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = single_release
-};
-
-static int scif_dev_info_show(struct seq_file *m, void *v)
+static int
+scif_dev_show(struct seq_file *m, void *data)
 {
 	int node;
 
-#ifdef _MIC_SCIF_
-	micscif_get_node_info();
-
-	mutex_lock(&ms_info.mi_conflock);
-#endif
 	seq_printf(m, "Total Nodes %d Self Node Id %d Maxid %d\n",
 		ms_info.mi_total, ms_info.mi_nodeid, ms_info.mi_maxid);
 
@@ -350,141 +297,492 @@ static int scif_dev_info_show(struct seq_file *m, void *v)
 			scif_dev[node].sd_wait_status,
 			scif_dev[node].num_active_conn,
 			scif_dev[node].sd_numa_node);
-#ifdef _MIC_SCIF_
-	mutex_unlock(&ms_info.mi_conflock);
+
+	return 0;
+}
+
+static int
+scif_dev_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, scif_dev_show, NULL);
+}
+
+struct file_operations scif_dev_fops = {
+	.open		= scif_dev_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+        .release 	= single_release,
+};
+
+static int
+scif_debug_show(struct seq_file *m, void *data)
+{
+	seq_printf(m, "Num gtt_entries %d\n", ms_info.nr_gtt_entries);
+	/*
+	 * Tracking the number of zombies for debug.
+	 * Need to make sure they are not being left behind forever.
+	 */
+	seq_printf(m, "Num Zombie Endpoints %d\n", ms_info.mi_nr_zombies);
+	seq_printf(m, "Watchdog timeout %d\n", ms_info.mi_watchdog_to);
+	seq_printf(m, "Watchdog enabled %d\n", ms_info.mi_watchdog_enabled);
+	seq_printf(m, "Watchdog auto reboot %d\n", ms_info.mi_watchdog_auto_reboot);
+	seq_printf(m, "Huge Pages Enabled %d Detected 2mb %lld 4k %lld\n",
+		mic_huge_page_enable, ms_info.nr_2mb_pages, ms_info.nr_4k_pages);
+#ifdef RMA_DEBUG
+	seq_printf(m, "rma_alloc_cnt %ld rma_pin_cnt %ld mmu_notif %ld rma_unaligned_cpu_cnt %ld\n",
+		atomic_long_read(&ms_info.rma_alloc_cnt),
+		atomic_long_read(&ms_info.rma_pin_cnt),
+		atomic_long_read(&ms_info.mmu_notif_cnt),
+		atomic_long_read(&ms_info.rma_unaligned_cpu_cnt));
 #endif
+	seq_printf(m, "List empty? mi_uaccept %d mi_listen %d mi_zombie %d "
+		"mi_connected %d mi_disconnected %d\n",
+		list_empty(&ms_info.mi_uaccept),
+		list_empty(&ms_info.mi_listen),
+		list_empty(&ms_info.mi_zombie),
+		list_empty(&ms_info.mi_connected),
+		list_empty(&ms_info.mi_disconnected));
 
 	return 0;
 }
 
-static int scif_dev_info_open(struct inode *inode, struct file *file)
+static int
+scif_debug_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, scif_dev_info_show, PDE_DATA(inode));
+	return single_open(file, scif_debug_show, NULL);
 }
 
-static const struct file_operations scif_dev_info_fops = {
-	.owner   = THIS_MODULE,
-	.open    = scif_dev_info_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = single_release
+struct file_operations scif_debug_fops = {
+	.open		= scif_debug_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+        .release 	= single_release,
 };
 
-#ifdef _MIC_SCIF_
-static int scif_suspend_show(struct seq_file *m, void *v)
+static int
+scif_suspend_show(struct seq_file *m, void *data)
 {
-	micscif_suspend_handler(NULL, 0, NULL);
+	int node;
+	uint64_t ret;
+	seq_printf(m, "Removing Nodes mask 0x7\n");
+
+	for (node = 0; node < ms_info.mi_total; node++) {
+		ret = micscif_disconnect_node(node, 0 , 1);
+		seq_printf(m, "Node %d requested disconnect. ret = %lld\n",
+			      node, ret);
+	}
+
 	return 0;
 }
 
-static int scif_suspend_open(struct inode *inode, struct file *file)
+static int
+scif_suspend_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, scif_suspend_show, PDE_DATA(inode));
+	return single_open(file, scif_suspend_show, NULL);
 }
 
-static const struct file_operations scif_suspend_fops = {
-	.owner   = THIS_MODULE,
-	.open    = scif_suspend_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = single_release
+struct file_operations scif_suspend_fops = {
+	.open		= scif_suspend_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+        .release 	= single_release,
 };
 
-static int scif_crash_show(struct seq_file *m, void *v)
-{
-	seq_printf(m, "%s %d Crash the Card to test Lost Nodes\n", __func__, __LINE__);
-	panic("Test Lost Node! Crash the card intentionally\n");
-	return 0;
-}
-
-static int scif_crash_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, scif_crash_show, PDE_DATA(inode));
-}
-
-static const struct file_operations scif_crash_fops = {
-	.owner   = THIS_MODULE,
-	.open    = scif_crash_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = single_release
-};
-
-static int scif_bugon_show(struct seq_file *m, void *v)
-{
-	seq_printf(m, "%s %d Bug on the Card to test Lost Nodes\n", __func__, __LINE__);
-	BUG_ON(1);
-	return 0;
-}
-
-static int scif_bugon_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, scif_bugon_show, PDE_DATA(inode));
-}
-
-static const struct file_operations scif_bugon_fops = {
-	.owner   = THIS_MODULE,
-	.open    = scif_bugon_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = single_release
-};
-
-static int scif_fail_suspend_show(struct seq_file *m, void *v)
-{
-	micscif_fail_suspend_handler(NULL, 0, NULL);
-	seq_printf(m, "Failing Suspend\n");
-	return 0;
-}
-
-static int scif_fail_suspend_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, scif_fail_suspend_show, PDE_DATA(inode));
-}
-
-static const struct file_operations scif_fail_suspend_fops = {
-	.owner   = THIS_MODULE,
-	.open    = scif_fail_suspend_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = single_release
-};
-
-static int scif_resume_show(struct seq_file *m, void *v)
-{
-	micscif_resume_handler(NULL, 0, NULL);
-	seq_printf(m, "Resuming/Waking up node\n");
-	return 0;
-}
-
-static int scif_resume_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, scif_resume_show, PDE_DATA(inode));
-}
-
-static const struct file_operations scif_resume_fops = {
-	.owner   = THIS_MODULE,
-	.open    = scif_resume_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = single_release
-};
-#endif
-
-static int scif_reg_cache_limit_show(struct seq_file *m, void *v)
+static int
+scif_cache_limit_show(struct seq_file *m, void *data)
 {
 	seq_printf(m, "reg_cache_limit = 0x%lx\n", ms_info.mi_rma_tc_limit);
 	return 0;
 }
 
-static int scif_reg_cache_limit_open(struct inode *inode, struct file *file)
+static int
+scif_cache_limit_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, scif_reg_cache_limit_show, PDE_DATA(inode));
+	return single_open(file, scif_cache_limit_show, NULL);
 }
 
-static ssize_t
-scif_reg_cache_limit_write(struct file *file, const char __user *buffer,
-					size_t len, loff_t *unused)
+struct file_operations scif_cache_limit_fops = {
+	.open		= scif_cache_limit_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+        .release 	= single_release,
+};
+
+#else // LINUX VERSION 3.10
+
+static int
+scif_ep_read(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+{
+	struct endpt *ep;
+	struct list_head *pos;
+	unsigned long sflags;
+	int l = 0;
+
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+		      "EP Address         State      Port  Peer     Remote Ep Address\n");
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+		      "=================================================================\n");
+	spin_lock_irqsave(&ms_info.mi_eplock, sflags);
+	list_for_each(pos, &ms_info.mi_listen) {
+		ep = list_entry(pos, struct endpt, list);
+		l += snprintf(buf + l, len - l > 0 ? len - l : 0 , "%p %s %6d\n",
+			      ep, scif_ep_states[ep->state], ep->port.port);
+	}
+	spin_unlock_irqrestore(&ms_info.mi_eplock, sflags);
+
+	spin_lock_irqsave(&ms_info.mi_connlock, sflags);
+	list_for_each(pos, &ms_info.mi_connected) {
+		ep = list_entry(pos, struct endpt, list);
+		l += snprintf(buf + l, len - l > 0 ? len - l : 0 , "%p %s %6d %2d:%-6d %p\n",
+			      ep, scif_ep_states[ep->state], ep->port.port, ep->peer.node,
+			      ep->peer.port, (void *)ep->remote_ep);
+	}
+	list_for_each(pos, &ms_info.mi_disconnected) {
+		ep = list_entry(pos, struct endpt, list);
+		l += snprintf(buf + l, len - l > 0 ? len - l : 0 , "%p %s %6d %2d:%-6d %p\n",
+			      ep, scif_ep_states[ep->state], ep->port.port, ep->peer.node,
+			      ep->peer.port, (void *)ep->remote_ep);
+	}
+	spin_unlock_irqrestore(&ms_info.mi_connlock, sflags);
+
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+		"EP Address         State      Port  Peer     Remote Ep Address reg_list "
+		"remote_reg_list mmn_list tw_refcount tcw_refcount mi_rma mi_rma_tc "
+		"task_list mic_mmu_notif_cleanup\n");
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+		      "=================================================================\n");
+	spin_lock_irqsave(&ms_info.mi_eplock, sflags);
+	list_for_each(pos, &ms_info.mi_zombie) {
+		ep = list_entry(pos, struct endpt, list);
+		l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+				"%p %s %6d %2d:%-6d %p %d %d %d %d %d %d %d %d %d\n",
+				ep, scif_ep_states[ep->state], ep->port.port, ep->peer.node,
+				ep->peer.port, (void *)ep->remote_ep,
+				list_empty(&ep->rma_info.reg_list),
+				list_empty(&ep->rma_info.remote_reg_list),
+				list_empty(&ep->rma_info.mmn_list),
+				atomic_read(&ep->rma_info.tw_refcount),
+				atomic_read(&ep->rma_info.tcw_refcount),
+				list_empty(&ms_info.mi_rma),
+				list_empty(&ms_info.mi_rma_tc),
+				list_empty(&ep->rma_info.task_list),
+#ifdef CONFIG_MMU_NOTIFIER
+				list_empty(&ms_info.mi_mmu_notif_cleanup)
+#else
+				-1
+#endif
+			    );
+	}
+	spin_unlock_irqrestore(&ms_info.mi_eplock, sflags);
+
+	*eof = 1;
+	return l;
+}
+
+static int
+scif_rma_window_read(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+{
+	struct endpt *ep;
+	struct list_head *pos, *item, *tmp;
+	unsigned long sflags;
+	int l = 0;
+	struct reg_range_t *window;
+
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+		      "SCIF Connected EP RMA Window Info\n");
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+		      "=================================================================\n");
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+		      "%-16s\t%-16s %-16s %-16s %-8s %-8s %-8s\n",
+		      "Endpoint", "Type", "Offset", "NumPages", "Prot", "Ref_Count", "Unreg State");
+	spin_lock_irqsave(&ms_info.mi_connlock, sflags);
+	list_for_each(pos, &ms_info.mi_connected) {
+		ep = list_entry(pos, struct endpt, list);
+		if (mutex_trylock(&ep->rma_info.rma_lock)) {
+			list_for_each_safe(item, tmp, &ep->rma_info.reg_list) {
+				window = list_entry(item, struct reg_range_t, list_member);
+				l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+					"%-16p\t%-16s 0x%-16llx %-16lld %-8d %-8d %-8d\n",
+					ep, window_type[window->type], window->offset,
+					window->nr_pages, window->prot, window->ref_count,
+					window->unreg_state);
+			}
+			list_for_each_safe(item, tmp, &ep->rma_info.remote_reg_list) {
+				window = list_entry(item, struct reg_range_t, list_member);
+				l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+					"%-16p\t%-16s 0x%-16llx %-16lld %-8d %-8d %-8d\n",
+					ep, window_type[window->type], window->offset,
+					window->nr_pages, window->prot, window->ref_count,
+					window->unreg_state);
+			}
+			mutex_unlock(&ep->rma_info.rma_lock);
+		} else
+			l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+					"Try Again, some other thread has the RMA lock for ep %p\n",
+					ep);
+	}
+	spin_unlock_irqrestore(&ms_info.mi_connlock, sflags);
+
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+		      "=================================================================\n");
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+		      "SCIF Zombie EP RMA Window Info\n");
+	spin_lock_irqsave(&ms_info.mi_eplock, sflags);
+	list_for_each(pos, &ms_info.mi_zombie) {
+		ep = list_entry(pos, struct endpt, list);
+		if (mutex_trylock(&ep->rma_info.rma_lock)) {
+			list_for_each_safe(item, tmp, &ep->rma_info.reg_list) {
+				window = list_entry(item, struct reg_range_t, list_member);
+				l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+					"%-16p\t%-16s 0x%-16llx %-16lld %-8d %-8d %-8d\n",
+					ep, window_type[window->type], window->offset,
+					window->nr_pages, window->prot, window->ref_count,
+					window->unreg_state);
+			}
+			list_for_each_safe(item, tmp, &ep->rma_info.remote_reg_list) {
+				window = list_entry(item, struct reg_range_t, list_member);
+				l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+					"%-16p\t%-16s 0x%-16llx %-16lld %-8d %-8d %-8d\n",
+					ep, window_type[window->type], window->offset,
+					window->nr_pages, window->prot, window->ref_count,
+					window->unreg_state);
+			}
+			mutex_unlock(&ep->rma_info.rma_lock);
+		} else
+			l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+					"Try Again, some other thread has the RMA lock for ep %p\n",
+					ep);
+	}
+	spin_unlock_irqrestore(&ms_info.mi_eplock, sflags);
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+			"=================================================================\n");
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+			"%-16s\t%-16s %-16s %-16s %-8s %-8s %-8s\n",
+			"Endpoint", "Type", "Offset", "NumPages", "Prot", "Ref_Count", "Unreg State");
+	spin_lock(&ms_info.mi_rmalock);
+	list_for_each_safe(item, tmp, &ms_info.mi_rma) {
+		window = list_entry(item, 
+				struct reg_range_t, list_member);
+		ep = (struct endpt *)window->ep;
+		l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+			"%-16p\t%-16s 0x%-16llx %-16lld %-8d %-8d %-8d\n",
+			ep, window_type[window->type], window->offset,
+			window->nr_pages, window->prot, window->ref_count,
+			window->unreg_state);
+	}
+	spin_unlock(&ms_info.mi_rmalock);
+
+	*eof = 1;
+	return l;
+}
+
+static int
+scif_rma_xfer_read(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+{
+	struct endpt *ep;
+	struct list_head *pos;
+	unsigned long sflags;
+	int l = 0;
+
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0 , "SCIF RMA Debug\n");
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+		      "=================================================================\n");
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0 , "%-16s\t %-16s %-16s %-16s\n",
+		      "Endpoint", "Fence Ref Count", "Temp Window Ref Count", "DMA CHANNEL");
+	spin_lock_irqsave(&ms_info.mi_connlock, sflags);
+	list_for_each(pos, &ms_info.mi_connected) {
+		ep = list_entry(pos, struct endpt, list);
+		l += snprintf(buf + l, len - l > 0 ? len - l : 0 , "%-16p\t%-16d %-16d %-16d\n",
+			ep, ep->rma_info.fence_refcount,
+			atomic_read(&ep->rma_info.tw_refcount),
+			ep->rma_info.dma_chan ? get_chan_num(ep->rma_info.dma_chan): -1);
+	}
+	spin_unlock_irqrestore(&ms_info.mi_connlock, sflags);
+
+	*eof = 1;
+	return l;
+}
+
+/* Place Holder for generic SCIF debug information */
+static int
+scif_debug_read(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+{
+	int l = 0;
+
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
+		"Num gtt_entries %d\n", ms_info.nr_gtt_entries);
+	/*
+	 * Tracking the number of zombies for debug.
+	 * Need to make sure they are not being left behind forever.
+	 */
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
+		 "Num Zombie Endpoints %d\n", ms_info.mi_nr_zombies);
+
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
+		 "Watchdog timeout %d\n", ms_info.mi_watchdog_to);
+
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
+		"Watchdog enabled %d\n", ms_info.mi_watchdog_enabled);
+
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
+		"Watchdog auto reboot %d\n", ms_info.mi_watchdog_auto_reboot);
+
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
+		"Huge Pages Enabled %d Detected 2mb %lld 4k %lld\n",
+		mic_huge_page_enable, ms_info.nr_2mb_pages, ms_info.nr_4k_pages);
+#ifdef RMA_DEBUG
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
+		"mm ref cnt %ld rma_alloc_cnt %ld rma_pin_cnt %ld mmu_notif %ld rma_unaligned_cpu_cnt %ld\n",
+		atomic_long_read(&ms_info.rma_mm_cnt),
+		atomic_long_read(&ms_info.rma_alloc_cnt),
+		atomic_long_read(&ms_info.rma_pin_cnt),
+		atomic_long_read(&ms_info.mmu_notif_cnt),
+		atomic_long_read(&ms_info.rma_unaligned_cpu_cnt));
+#endif
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
+		"List empty? mi_uaccept %d mi_listen %d mi_zombie %d "
+		"mi_connected %d mi_disconnected %d\n",
+		list_empty(&ms_info.mi_uaccept),
+		list_empty(&ms_info.mi_listen),
+		list_empty(&ms_info.mi_zombie),
+		list_empty(&ms_info.mi_connected),
+		list_empty(&ms_info.mi_disconnected));
+
+	*eof = 1;
+	return l;
+}
+
+static int
+scif_dev_info(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+{
+	int l = 0;
+	int node;
+
+#ifdef _MIC_SCIF_
+	micscif_get_node_info();
+
+	mutex_lock(&ms_info.mi_conflock);
+#endif
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
+		"Total Nodes %d Self Node Id %d Maxid %d\n",
+		ms_info.mi_total, ms_info.mi_nodeid, ms_info.mi_maxid);
+
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+		"%-16s\t%-16s %-16s\t%-16s\t%-8s\t%-8s\t%-8s\n",
+		"node_id", "state", "scif_ref_cnt", "scif_map_ref_cnt",
+		"wait_status", "conn count", "numa_node");
+
+	for (node = 0; node <= ms_info.mi_maxid; node++)
+		l += snprintf(buf + l, len - l > 0 ? len - l : 0,
+			"%-16d\t%-16s\t0x%-16lx\t%-16d\t%-16lld\t%-16d\t%-16d\n",
+			scif_dev[node].sd_node, scifdev_state[scif_dev[node].sd_state],
+			atomic_long_read(&scif_dev[node].scif_ref_cnt),
+			scif_dev[node].scif_map_ref_cnt,
+			scif_dev[node].sd_wait_status,
+			scif_dev[node].num_active_conn,
+			scif_dev[node].sd_numa_node);
+#ifdef _MIC_SCIF_
+	mutex_unlock(&ms_info.mi_conflock);
+#endif
+
+	*eof = 1;
+	return l;
+}
+
+static int
+scif_suspend(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+{
+	int l = 0;
+
+#ifdef _MIC_SCIF_
+	micscif_suspend_handler(NULL, 0, NULL);
+#else
+	{
+		int node;
+		uint64_t ret;
+		l += snprintf(buf + l, len - l > 0 ? len - l : 0,
+			      "Removing Nodes mask 0x7\n");
+		for (node = 0; node < ms_info.mi_total; node++) {
+			ret = micscif_disconnect_node(node, 0 , 1);
+			l += snprintf(buf + l, len - l > 0 ? len - l : 0,
+				      "Node %d requested disconnect. ret = %lld\n",
+				      node, ret);
+		}
+	}
+#endif
+
+	*eof = 1;
+	return l;
+}
+
+#ifdef _MIC_SCIF_
+static int
+scif_crash(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+{
+	int l = 0;
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
+		      "%s %d Crash the Card to test Lost Nodes\n", __func__, __LINE__);
+	panic("Test Lost Node! Crash the card intentionally\n");
+	*eof = 1;
+	return l;
+}
+
+static int
+scif_bugon(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+{
+	int l = 0;
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
+		      "%s %d Bug on the Card to test Lost Nodes\n", __func__, __LINE__);
+	BUG_ON(1);
+	*eof = 1;
+	return l;
+}
+#endif
+
+static int
+scif_fail_suspend(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+{
+	int l = 0;
+
+#ifdef _MIC_SCIF_
+	micscif_fail_suspend_handler(NULL, 0, NULL);
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
+		      "Failing Suspend\n");
+#endif
+
+	*eof = 1;
+	return l;
+}
+
+static int
+scif_resume(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+{
+	int l = 0;
+
+#ifdef _MIC_SCIF_
+	micscif_resume_handler(NULL, 0, NULL);
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0,
+		      "Resuming/Waking up node\n");
+#endif
+
+	*eof = 1;
+	return l;
+}
+
+static int
+scif_get_reg_cache_limit(char *buf, char **start, off_t offset, int len, int *eof, void *data)
+{
+	int l = 0;
+
+	l += snprintf(buf + l, len - l > 0 ? len - l : 0 ,
+			"reg_cache_limit = 0x%lx\n", ms_info.mi_rma_tc_limit);
+	*eof = 1;
+	return l;
+}
+
+static int
+scif_set_reg_cache_limit(struct file *file, const char __user *buffer,
+					unsigned long len, void *unused)
 {
 	unsigned long data = 0;
 	char *p;
@@ -496,15 +794,7 @@ scif_reg_cache_limit_write(struct file *file, const char __user *buffer,
 	ms_info.mi_rma_tc_limit = data;
 	return len;
 }
-
-static const struct file_operations scif_reg_cache_limit_fops = {
-	.owner   = THIS_MODULE,
-	.open    = scif_reg_cache_limit_open,
-	.write   = scif_reg_cache_limit_write,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = single_release
-};
+#endif
 
 #ifdef _MIC_SCIF_
 static int smpt_seq_show(struct seq_file *s, void *pos)
@@ -648,25 +938,47 @@ static struct file_operations log_buf_ops = {
 };
 #endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
 void
 scif_proc_init(void)
 {
 	if ((scif_proc = proc_mkdir("scif", NULL)) != NULL) {
-		proc_create("ep", 0444, scif_proc, &scif_ep_fops);
-		proc_create("rma_window", 0444, scif_proc, &scif_rma_window_fops);
-		proc_create("rma_xfer", 0444, scif_proc, &scif_rma_xfer_fops);
-		proc_create("scif_dev", 0444, scif_proc, &scif_dev_info_fops);
-		proc_create("debug", 0444, scif_proc, &scif_debug_fops);
-#ifdef _MIC_SCIF_
-		proc_create("suspend", 0444, scif_proc, &scif_suspend_fops);
-		proc_create("fail_suspend", 0444, scif_proc, &scif_fail_suspend_fops);
-		proc_create("resume", 0444, scif_proc, &scif_resume_fops);
-		proc_create("crash", 0444, scif_proc, &scif_crash_fops);
-		proc_create("bugon", 0444, scif_proc, &scif_bugon_fops);
-#endif
-		proc_create("reg_cache_limit", S_IFREG | S_IRUGO | S_IWUGO, scif_proc, &scif_reg_cache_limit_fops);
+		proc_create_data("ep", 0444, scif_proc, &scif_ep_fops, NULL);
+		proc_create_data("rma_window", 0444, scif_proc, &scif_rma_window_fops, NULL);
+		proc_create_data("rma_xfer", 0444, scif_proc, &scif_rma_xfer_fops, NULL);
+		proc_create_data("scif_dev", 0444, scif_proc, &scif_dev_fops, NULL);
+		proc_create_data("debug", 0444, scif_proc, &scif_debug_fops, NULL);
+		proc_create_data("suspend", 0444, scif_proc, &scif_suspend_fops, NULL);
+		proc_create("reg_cache_limit", S_IFREG | S_IRUGO | S_IWUGO, scif_proc,
+			    &scif_cache_limit_fops);
 	}
 }
+#else
+void
+scif_proc_init(void)
+{
+	struct proc_dir_entry *temp;
+	if ((scif_proc = create_proc_entry("scif", S_IFDIR | S_IRUGO, NULL)) != NULL) {
+		create_proc_read_entry("ep", 0444, scif_proc, scif_ep_read, NULL);
+		create_proc_read_entry("rma_window", 0444, scif_proc, scif_rma_window_read, NULL);
+		create_proc_read_entry("rma_xfer", 0444, scif_proc, scif_rma_xfer_read, NULL);
+		create_proc_read_entry("scif_dev", 0444, scif_proc, scif_dev_info, NULL);
+		create_proc_read_entry("debug", 0444, scif_proc, scif_debug_read, NULL);
+		create_proc_read_entry("suspend", 0444, scif_proc, scif_suspend, NULL);
+		create_proc_read_entry("fail_suspend", 0444, scif_proc, scif_fail_suspend, NULL);
+		create_proc_read_entry("resume", 0444, scif_proc, scif_resume, NULL);
+#ifdef _MIC_SCIF_
+		create_proc_read_entry("crash", 0444, scif_proc, scif_crash, NULL);
+		create_proc_read_entry("bugon", 0444, scif_proc, scif_bugon, NULL);
+#endif
+		if ((temp = create_proc_entry("reg_cache_limit", S_IFREG | S_IRUGO | S_IWUGO, scif_proc))) {
+			temp->write_proc = scif_set_reg_cache_limit;
+			temp->read_proc = scif_get_reg_cache_limit;
+			temp->data = NULL;
+		}
+	}
+}
+#endif // LINUX VERSION
 
 #ifdef _MIC_SCIF_
 void
@@ -705,6 +1017,14 @@ mic_debug_uninit(void)
 	debugfs_remove_recursive(mic_debug);
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+void
+scif_proc_cleanup(void)
+{
+	if (scif_proc)
+		remove_proc_subtree("scif", NULL);
+}
+#else
 void
 scif_proc_cleanup(void)
 {
@@ -715,10 +1035,10 @@ scif_proc_cleanup(void)
 		remove_proc_entry("rma_xfer", scif_proc);
 		remove_proc_entry("scif_dev", scif_proc);
 		remove_proc_entry("debug", scif_proc);
-#ifdef _MIC_SCIF_
 		remove_proc_entry("suspend", scif_proc);
 		remove_proc_entry("fail_suspend", scif_proc);
 		remove_proc_entry("resume", scif_proc);
+#ifdef _MIC_SCIF_
 		remove_proc_entry("crash", scif_proc);
 		remove_proc_entry("bugon", scif_proc);
 #endif
@@ -726,6 +1046,7 @@ scif_proc_cleanup(void)
 		scif_proc = NULL;
 	}
 }
+#endif
 
 #ifdef _MIC_SCIF_
 extern int micscif_max_msg_id;
