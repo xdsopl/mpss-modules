@@ -93,7 +93,9 @@ micvcons_create(int num_bds)
 	micvcons_tty->driver_name = MICVCONS_DEVICE_NAME;
 	micvcons_tty->name = MICVCONS_DEVICE_NAME;
 	micvcons_tty->major = 0;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0))
 	micvcons_tty->minor_num = num_bds;
+#endif
 	micvcons_tty->minor_start = 0;
 	micvcons_tty->type = TTY_DRIVER_TYPE_SERIAL;
 	micvcons_tty->subtype = SERIAL_TYPE_NORMAL;
@@ -123,6 +125,10 @@ micvcons_create(int num_bds)
 		bd_info = (bd_info_t *)port->dp_bdinfo;
 		bd_info->bi_port = port;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+		tty_port_init(&port->port);
+		dev = tty_port_register_device(&port->port, micvcons_tty, bd, NULL);
+#else
 		dev = tty_register_device(micvcons_tty, bd, NULL);
 		if (IS_ERR(dev)) {
 			printk("Failed to register vcons tty device\n");
@@ -130,8 +136,9 @@ micvcons_create(int num_bds)
 			ret = PTR_ERR(dev);
 			goto exit;
 		}
+#endif
 		snprintf(wq_name, sizeof(wq_name), "VCONS MIC %d", bd);
-		port->dp_wq = create_singlethread_workqueue(wq_name);
+		port->dp_wq = __mic_create_singlethread_workqueue(wq_name);
 		if (!port->dp_wq) {
 			printk(KERN_ERR "%s: create_singlethread_workqueue\n", 
 								__func__);
@@ -199,7 +206,9 @@ micvcons_open(struct tty_struct * tty, struct file * filp)
 		port->dp_canread = 1;
 	}
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0))
 	tty->low_latency = 0;
+#endif
 
 	if (!port->dp_tty)
 		port->dp_tty = tty;
@@ -333,9 +342,15 @@ micvcons_readchars(micvcons_port_t *port)
 		ret = micscif_rb_get_next(port->dp_in, buf, get_count);
 		micscif_rb_update_read_ptr(port->dp_in);
 		if (port->dp_reader && port->dp_canread) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+			if ((bytes_read = tty_insert_flip_string(
+					&port->port, buf, get_count)) != 0)
+				tty_flip_buffer_push(&port->port);
+#else
 			bytes_read = tty_insert_flip_string(port->dp_tty, 
 								buf, get_count);
 			tty_flip_buffer_push(port->dp_tty);
+#endif
 			bytes_total += bytes_read;
 			if (bytes_read != get_count) {
 				printk(KERN_WARNING "dropping characters: \

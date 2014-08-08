@@ -217,7 +217,11 @@ enum {
 static inline int vhost_has_feature(struct vhost_dev *dev, int bit)
 {
 #ifdef RHEL_RELEASE_CODE
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+	unsigned acked_features = rcu_dereference_index_check(dev->acked_features, rcu_read_lock_held());
+#else
 	unsigned acked_features = rcu_dereference(dev->acked_features);
+#endif
 #else
 	unsigned acked_features = rcu_dereference_index_check(dev->acked_features, rcu_read_lock_held());
 #endif

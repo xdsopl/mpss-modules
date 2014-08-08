@@ -987,7 +987,7 @@ micvnet_init_interrupts(struct micvnet_info *vnet_info)
 		 "VNET WQ %d", mic_ctx->bi_id);
 
 	if (!(vnet_info->vi_wq =
-	      create_singlethread_workqueue(vnet_info->vi_wqname))) {
+	      __mic_create_singlethread_workqueue(vnet_info->vi_wqname))) {
 		printk(KERN_ERR "%s: create_singlethread_workqueue\n", __func__);
 		return -ENOMEM;
 	}
@@ -1524,7 +1524,7 @@ micvnet_stop_ws(struct work_struct *work)
 #if !defined(WINDOWS) && defined(HOST)
 static ssize_t
 show_vnet(struct device *dev, struct device_attribute *attr, char *buf);
-DEVICE_ATTR(vnet, S_IRUGO|S_IWUGO, show_vnet, NULL);
+DEVICE_ATTR(vnet, S_IRUGO, show_vnet, NULL);
 
 static ssize_t
 show_vnet(struct device *dev, struct device_attribute *attr, char *buf)

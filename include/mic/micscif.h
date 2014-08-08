@@ -117,8 +117,11 @@
  * a DMA write by sending a SCIF Node QP message has been
  * seen to be higher than programming a P2P DMA Read on self
  * for transfer sizes less than the PROXY_DMA_THRESHOLD.
+ * The minimum threshold is different for Jaketown versus
+ * Ivytown and tuned for best DMA performance.
  */
-#define SCIF_PROXY_DMA_THRESHOLD (32 * 1024ULL)
+#define SCIF_PROXY_DMA_THRESHOLD_JKT (32 * 1024ULL)
+#define SCIF_PROXY_DMA_THRESHOLD_IVT (1024 * 1024ULL)
 
 //#define RMA_DEBUG 0
 
@@ -148,6 +151,8 @@ struct micscif_info {
 					// windows to be destroyed.
 	struct mutex	 mi_fencelock;  // Synchronize access to list of remote fences requested.
 	struct mutex	 mi_event_cblock;
+	struct mutex	 mi_nb_connect_lock;
+
 	struct list_head mi_uaccept;	// List of user acceptreq waiting for acceptreg
 	struct list_head mi_listen;	// List of listening end points
 	struct list_head mi_zombie;	// List of zombie end points with pending RMA's.
@@ -159,6 +164,7 @@ struct micscif_info {
 					// to be destroyed.
 	struct list_head mi_fence;	// List of remote fence requests.
 	struct list_head mi_event_cb; /* List of event handlers registered */
+	struct list_head mi_nb_connect_list;
 #ifdef CONFIG_MMU_NOTIFIER
 	struct list_head mi_mmu_notif_cleanup;
 #endif
@@ -211,6 +217,8 @@ struct micscif_info {
 #ifdef _MIC_SCIF_
 	int mi_intr_rcnt[MAX_RDMASR]; // Ref count to track SCIF Interrupt Handlers
 #endif
+	struct workqueue_struct 	*mi_conn_wq;
+	struct work_struct		mi_conn_work;
 };
 
 extern struct micscif_info ms_info;
@@ -315,6 +323,8 @@ struct micscif_dev {
 #ifdef _MIC_SCIF_
 	wait_queue_head_t	sd_p2p_wq;
 	bool			sd_proxy_dma_reads;
+	struct delayed_work	sd_p2p_dwork;
+	int			sd_p2p_retry;
 #endif
 	/*
 	 * The NUMA node the peer is attached to on the host.
@@ -423,7 +433,7 @@ struct endpt {
 	struct scif_portID	port;
 	struct scif_portID	peer;
 
-	uint8_t			backlog;
+	int			backlog;
 
 	struct endpt_qp_info 	qp_info;
 	struct endpt_rma_info	rma_info;
@@ -473,6 +483,14 @@ struct endpt {
 	struct list_head	liacceptlist;	/* link to listen accept */
 	struct list_head	miacceptlist;	/* link to mi_uaccept */
 	struct endpt		*listenep;	/* associated listen ep */
+
+	/* Non-blocking connect */
+	struct work_struct		conn_work;
+	struct scif_portID	conn_port;
+	int					conn_err;
+	int					conn_async_state;
+	wait_queue_head_t	conn_pend_wq;
+	struct list_head	conn_list;
 };
 
 static __always_inline void
@@ -512,7 +530,7 @@ int __scif_pin_pages(void *addr, size_t len, int *out_prot,
 scif_epd_t __scif_open(void);
 int __scif_bind(scif_epd_t epd, uint16_t pn);
 int __scif_listen(scif_epd_t epd, int backlog);
-int __scif_connect(scif_epd_t epd, struct scif_portID *dst);
+int __scif_connect(scif_epd_t epd, struct scif_portID *dst, bool non_block);
 int __scif_accept(scif_epd_t epd, struct scif_portID *peer, scif_epd_t
 *newepd, int flags);
 int __scif_close(scif_epd_t epd);
@@ -537,6 +555,7 @@ int __scif_put_pages(struct scif_range *pages);
 int __scif_flush(scif_epd_t epd);
 
 void micscif_misc_handler(struct work_struct *work);
+void micscif_conn_handler(struct work_struct *work);
 
 uint16_t rsrv_scif_port(uint16_t port);
 uint16_t get_scif_port(void);
@@ -556,6 +575,7 @@ int micscif_flush(struct file *f, fl_owner_t id);
 #ifdef _MIC_SCIF_
 void mic_debug_init(void);
 void micscif_get_node_info(void);
+void scif_poll_qp_state(struct work_struct *work);
 #endif
 void mic_debug_uninit(void);
 
@@ -822,6 +842,7 @@ scif_invalidate_ep(int node)
 		}
 	}
 	spin_unlock_irqrestore(&ms_info.mi_connlock, sflags);
+	flush_workqueue(ms_info.mi_conn_wq);
 }
 
 /*

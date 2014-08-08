@@ -689,6 +689,12 @@ mic_signal_daemon(void)
 
 extern char *micstates[];
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+#define __mic_create_singlethread_workqueue(name)	alloc_ordered_workqueue(name, 0)
+#else
+#define __mic_create_singlethread_workqueue(name)	create_singlethread_workqueue(name)
+#endif
+
 static __always_inline void
 mic_setstate(mic_ctx_t *mic_ctx, enum mic_status newstate)
 {

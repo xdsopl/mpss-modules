@@ -46,6 +46,7 @@
 #include<linux/interrupt.h>
 #include<linux/proc_fs.h>
 #include<linux/bitops.h>
+#include<linux/version.h>
 #ifdef _MIC_SCIF_
 #include <asm/mic/mic_common.h>
 #ifdef CONFIG_PAGE_CACHE_DMA
@@ -70,8 +71,12 @@ MODULE_LICENSE("GPL");
 
 #ifdef MIC_IS_EMULATION
 #define DMA_TO		(INT_MAX)
+#define DMA_FENCE_TIMEOUT_CNT (INT_MAX)
 #else
 #define DMA_TO		(5 * HZ)
+#define DMA_SLOWEST_BW  (300)  // 300Mbps
+// the maximum size for each decriptor entry is 2M
+#define DMA_FENCE_TIMEOUT_CNT (2 * MIC_MAX_NUM_DESC_PER_RING /DMA_SLOWEST_BW/ (DMA_TO/HZ))
 #endif
 
 #ifdef _MIC_SCIF_
@@ -670,6 +675,13 @@ free_dma_channel(struct dma_channel *chan)
 }
 EXPORT_SYMBOL(free_dma_channel);
 
+__always_inline uint32_t
+get_dma_tail_pointer(struct dma_channel *chan)
+{
+	struct mic_dma_device *dma_dev;
+	dma_dev = &chan->dma_ctx->dma_dev;
+	return md_mic_dma_chan_read_tail(dma_dev, chan->chan);
+}
 /*
  * Return -1 in case of error
  */
@@ -1065,9 +1077,12 @@ EXPORT_SYMBOL(is_dma_mark_processed);
 int dma_mark_wait(struct dma_channel *chan, int mark, bool is_interruptible)
 {
 	int err = 0;
+	uint32_t prev_tail = 0, new_tail;
+	uint32_t count = 0;
 
 	if (chan) {
 		might_sleep();
+__retry:
 		if (is_interruptible)
 			err = wait_event_interruptible_timeout(
 				chan->intr_wq, 
@@ -1076,9 +1091,19 @@ int dma_mark_wait(struct dma_channel *chan, int mark, bool is_interruptible)
 		else
 			err = wait_event_timeout(chan->intr_wq, 
 				is_dma_mark_processed(chan, mark), DMA_TO);
-		if (!err) {
-			printk(KERN_ERR "%s %d TO chan 0x%x\n", __func__, __LINE__, chan->ch_num);
-			err = -EBUSY;
+
+		if (!err) { // 0 is timeout
+			new_tail = get_dma_tail_pointer(chan);
+			if ((count <= DMA_FENCE_TIMEOUT_CNT) &&
+				(!count || new_tail != prev_tail)) {  // For performance, prev_tail is not read at the begining
+					prev_tail = new_tail;
+					count++;
+					pr_debug("DMA fence wating is still ongoing, waiting for %d seconds\n", DMA_TO/HZ *count);
+					goto __retry;
+			} else {
+				printk(KERN_ERR "%s %d TO chan 0x%x\n", __func__, __LINE__, chan->ch_num);
+				err = -EBUSY;
+			}
 		}
 		if (err > 0)
 			err = 0;
@@ -1097,7 +1122,7 @@ int drain_dma_poll(struct dma_channel *chan)
 {
 	int cookie, err;
 	unsigned long ts;
-
+	uint32_t prev_tail = 0, new_tail, count = 0;
 	if (chan) {
 		if ((err = request_dma_channel(chan)))
 			goto error;
@@ -1112,8 +1137,16 @@ int drain_dma_poll(struct dma_channel *chan)
 		while (1 != poll_dma_completion(cookie, chan)) {
 			cpu_relax();
 			if (time_after(jiffies,ts + DMA_TO)) {
-				err = -EBUSY;
-				break;
+				new_tail = get_dma_tail_pointer(chan);
+				if ((!count || new_tail != prev_tail) && (count <= DMA_FENCE_TIMEOUT_CNT)) {
+					prev_tail = new_tail;
+					ts = jiffies;
+					count++;
+					pr_debug("polling DMA is still ongoing,  wating for %d seconds\n", DMA_TO/HZ * count);
+				} else {
+					err = -EBUSY;
+					break;
+				}
 			}
 		}
 error:
@@ -1327,6 +1360,220 @@ module_init(mic_dma_init);
 module_exit(mic_dma_uninit);
 #endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+static int
+mic_dma_proc_ring_show(struct seq_file *m, void *data)
+{
+	struct mic_dma_ctx_t *dma_ctx = data;
+	int i;
+	struct compl_buf_ring *ring;
+
+	seq_printf(m, "Intr rings\n");
+	seq_printf(m, "%-10s%-12s%-12s%-12s%-25s%-18s%-25s\n",
+		       "Chan", "Head", "Tail", "Size", "Tail loc", "Actual tail", "In Use");
+	for (i = first_dma_chan(); i <= last_dma_chan(); i++) {
+		ring = &dma_ctx->dma_channels[i].intr_ring.ring;
+		seq_printf(m, "%-#10x%-#12x%-#12x%-#12x%-#25llx%-#18x%-#18x\n",
+			i, ring->head, ring->tail, ring->size,
+			ring->tail_location, *(int*)ring->tail_location,
+			atomic_read(&dma_ctx->dma_channels[i].flags));
+	}
+	seq_printf(m, "Poll rings\n");
+	seq_printf(m, "%-10s%-12s%-12s%-12s%-25s%-18s\n",
+		       "Chan", "Head", "Tail", "Size", "Tail loc", "Actual tail");
+	for (i = first_dma_chan(); i <= last_dma_chan(); i++) {
+		ring = &dma_ctx->dma_channels[i].poll_ring;
+		seq_printf(m, "%-#10x%-#12x%-#12x%-#12x%-#25llx%-#18x\n",
+			       i, ring->head, ring->tail, ring->size,
+			       ring->tail_location, *(int*)ring->tail_location);
+	}
+	seq_printf(m, "Next_Write_Index\n");
+	seq_printf(m, "%-10s%-12s\n", "Chan", "Next_Write_Index");
+	for (i = 0; i < MAX_NUM_DMA_CHAN; i++) {
+		seq_printf(m, "%-#10x%-#12llx\n",
+			       i, dma_ctx->dma_channels[i].next_write_index);
+	}
+	return 0;
+}
+
+static int
+mic_dma_proc_ring_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, mic_dma_proc_ring_show, NULL);
+}
+
+static int
+mic_dma_proc_reg_show(struct seq_file *m, void *data)
+{
+	int i, j, chan_num, size, dtpr;
+	struct mic_dma_ctx_t *dma_ctx = data;
+	struct mic_dma_device *dma_dev = &dma_ctx->dma_dev;
+	struct dma_channel *curr_chan;
+	union md_mic_dma_desc desc;
+
+	seq_printf(m, "========================================"
+				"=======================================\n");
+	seq_printf(m, "SBOX_DCR: %#x\n",
+				mic_sbox_read_mmio(dma_dev->mm_sbox, SBOX_DCR));
+	seq_printf(m, "DMA Channel Registers\n");
+	seq_printf(m, "========================================"
+				"=======================================\n");
+	seq_printf(m, "%-10s| %-10s %-10s %-10s %-10s %-10s %-10s"
+#ifdef CONFIG_MK1OM
+				  " %-10s %-11s %-14s %-10s"
+#endif
+				"\n", "Channel", "DCAR", "DTPR", "DHPR",
+					"DRAR_HI", "DRAR_LO",
+#ifdef CONFIG_MK1OM
+					"DSTATWB_LO", "DSTATWB_HI", "DSTAT_CHERR", "DSTAT_CHERRMSK",
+#endif
+					"DSTAT");
+	seq_printf(m, "========================================"
+				"=======================================\n");
+
+#ifdef _MIC_SCIF_
+	for (i = 0; i < MAX_NUM_DMA_CHAN; i++) {
+#else
+	for (i = first_dma_chan(); i <= last_dma_chan(); i++) {
+#endif
+		curr_chan = &dma_ctx->dma_channels[i];
+		chan_num = curr_chan->ch_num;
+		seq_printf(m, "%-10i| %-#10x %-#10x %-#10x %-#10x"
+			" %-#10x"
+#ifdef CONFIG_MK1OM
+			" %-#10x %-#11x %-#10x %-#14x"
+#endif
+			" %-#10x\n", chan_num,
+			md_mic_dma_read_mmio(dma_dev, chan_num, REG_DCAR),
+			md_mic_dma_read_mmio(dma_dev, chan_num, REG_DTPR),
+			md_mic_dma_read_mmio(dma_dev, chan_num, REG_DHPR),
+			md_mic_dma_read_mmio(dma_dev, chan_num, REG_DRAR_HI),
+			md_mic_dma_read_mmio(dma_dev, chan_num, REG_DRAR_LO),
+#ifdef CONFIG_MK1OM
+			md_mic_dma_read_mmio(dma_dev, chan_num, REG_DSTATWB_LO),
+			md_mic_dma_read_mmio(dma_dev, chan_num, REG_DSTATWB_HI),
+			md_mic_dma_read_mmio(dma_dev, chan_num, REG_DCHERR),
+			md_mic_dma_read_mmio(dma_dev, chan_num, REG_DCHERRMSK),
+#endif
+			md_mic_dma_read_mmio(dma_dev, chan_num, REG_DSTAT));
+	}
+
+	seq_printf(m, "\nDMA Channel Descriptor Rings\n");
+	seq_printf(m, "========================================"
+				"=======================================\n");
+
+	for (i = first_dma_chan(); i <= last_dma_chan(); i++) {
+		curr_chan = &dma_ctx->dma_channels[i];
+		chan_num = curr_chan->ch_num;
+		dtpr = md_mic_dma_read_mmio(dma_dev, chan_num, REG_DTPR);
+		seq_printf(m,  "Channel %i: [", chan_num);
+		size = ((int) md_mic_dma_read_mmio(dma_dev, chan_num, REG_DHPR)
+			- dtpr) % curr_chan->chan->num_desc_in_ring;
+		/*
+		 * In KNC B0, empty condition is tail = head -1
+		 */
+		if (mic_hw_family(dma_ctx->device_num) == FAMILY_KNC &&
+			mic_hw_stepping(dma_ctx->device_num) >= KNC_B0_STEP)
+			size -= 1;
+
+		for (j = 0; j < size; j++) {
+			desc = curr_chan->desc_ring[(j+dtpr) % 
+				curr_chan->chan->num_desc_in_ring];	
+
+			switch (desc.desc.nop.type){
+			case NOP:
+				seq_printf(m," {Type: NOP, 0x%#llx"
+					" %#llx} ",  desc.qwords.qw0,
+						   desc.qwords.qw1);
+			case MEMCOPY:
+				seq_printf(m," {Type: MEMCOPY, SAP:"
+					" 0x%#llx, DAP: %#llx, length: %#llx} ",
+					  (uint64_t) desc.desc.memcopy.sap,
+					  (uint64_t) desc.desc.memcopy.dap,
+					  (uint64_t) desc.desc.memcopy.length);
+				break;
+			case STATUS:
+				seq_printf(m," {Type: STATUS, data:"
+					" 0x%#llx, DAP: %#llx, intr: %lli} ",
+					(uint64_t) desc.desc.status.data,
+					(uint64_t) desc.desc.status.dap,
+					(uint64_t) desc.desc.status.intr);
+				break;
+			case GENERAL:
+				seq_printf(m," {Type: GENERAL, "
+					"DAP: %#llx, dword: %#llx} ",
+					(uint64_t) desc.desc.general.dap,
+					(uint64_t) desc.desc.general.data);
+				break;
+			case KEYNONCECNT:
+				seq_printf(m," {Type: KEYNONCECNT, sel: "
+					"%lli, h: %lli, index: %lli, cs: %lli,"
+					" value: %#llx} ",
+						(uint64_t) desc.desc.keynoncecnt.sel,
+						(uint64_t) desc.desc.keynoncecnt.h,
+						(uint64_t) desc.desc.keynoncecnt.index,
+						(uint64_t) desc.desc.keynoncecnt.cs,
+						(uint64_t) desc.desc.keynoncecnt.data);
+				break;
+			case KEY:
+				seq_printf(m," {Type: KEY, dest_ind"
+					   "ex: %lli, ski: %lli, skap: %#llx ",
+						(uint64_t) desc.desc.key.di,
+						(uint64_t) desc.desc.key.ski,
+						(uint64_t) desc.desc.key.skap);
+				break;
+			default:
+				seq_printf(m," {Uknown Type=%lli ,"
+				 "%#llx %#llx} ",(uint64_t)  desc.desc.nop.type,
+						(uint64_t) desc.qwords.qw0,
+						(uint64_t) desc.qwords.qw1);
+			}
+		}
+		seq_printf(m,  "]\n");
+		if (mic_hw_family(dma_ctx->device_num) == FAMILY_KNC &&
+		    mic_hw_stepping(dma_ctx->device_num) >= KNC_B0_STEP &&
+		    curr_chan->chan->dstat_wb_loc)
+			seq_printf(m, "DSTAT_WB = 0x%x\n",
+				*((uint32_t*)curr_chan->chan->dstat_wb_loc));
+	}
+	return 0;
+}
+
+static int
+mic_dma_proc_reg_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, mic_dma_proc_reg_show, NULL);
+}
+
+struct file_operations micdma_ring_fops = {
+	.open		= mic_dma_proc_ring_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+        .release 	= single_release,
+};
+
+struct file_operations micdma_reg_fops = {
+	.open		= mic_dma_proc_reg_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+        .release 	= single_release,
+};
+
+static void
+mic_dma_proc_init(struct mic_dma_ctx_t *dma_ctx)
+{
+	char name[64];
+
+	snprintf(name, 63, "%s%d", proc_dma_ring, dma_ctx->device_num);
+	if (!proc_create(name,  S_IFREG | S_IRUGO, NULL, &micdma_ring_fops))
+		printk("micdma: unable to register /proc/%s\n", name);
+
+	snprintf(name, 63, "%s%d", proc_dma_reg, dma_ctx->device_num);
+	if (!proc_create(name, S_IFREG | S_IRUGO, NULL, &micdma_reg_fops))
+		printk("micdma: unable to register /proc/%s\n", name);
+
+}
+#else // LINUX VERSION
 static int
 mic_dma_proc_read_fn(char *buf, char **start, off_t offset, int count, int *eof, void *data)
 {
@@ -1518,6 +1765,7 @@ mic_dma_proc_init(struct mic_dma_ctx_t *dma_ctx)
 	}
 
 }
+#endif // LINUX VERSION
 
 static void
 mic_dma_proc_uninit(struct mic_dma_ctx_t *dma_ctx)

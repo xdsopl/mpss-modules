@@ -473,7 +473,7 @@ load_uos_into_gddr(mic_ctx_t *mic_ctx, char *imgname, uint32_t* uos_size, uint64
 
 	if (status) {
 		mic_ctx->state = MIC_BOOTFAIL;
-		printk("image not found at %s , status returned %d\n", imgname, status);
+		printk("Linux image not found at %s , status returned %d\n", imgname, status);
 		return status;
 	}
 
@@ -539,7 +539,7 @@ load_initramfs(mic_ctx_t *mic_ctx, char *initramfsname, uint32_t *initramfs_imag
 
 	if (status) {
 		mic_ctx->state = MIC_BOOTFAIL;
-		printk("image not found at %s , status returned %d\n", initramfsname, status);
+		printk("Init ram disk image not found at %s , status returned %d\n", initramfsname, status);
 		return status;
 	}
 
@@ -651,8 +651,8 @@ load_command_line(mic_ctx_t *mic_ctx, uint64_t uos_cmd_offset)
 		cmdlen += snprintf(buf + cmdlen, MIC_CMDLINE_BUFSIZE - cmdlen,
 			" crashkernel=1M@80M");
 	/*
-	 * Limitations in the Intel Jaketown platform require SCIF to proxy
-	 * P2P DMA read transfers in order to convert them into a P2P DMA
+	 * Limitations in the Intel Jaketown and Ivytown platforms require SCIF
+	 * to proxy P2P DMA read transfers in order to convert them into a P2P DMA
 	 * write for better performance. The SCIF module on MIC needs the
 	 * numa node the MIC is connected to on the host to make decisions
 	 * about whether to proxy P2P DMA reads or not based on whether the two MIC
@@ -662,11 +662,19 @@ load_command_line(mic_ctx_t *mic_ctx, uint64_t uos_cmd_offset)
 	 */
 	pr_debug("CPU family = %d, CPU model = %d\n", boot_cpu_data.x86, boot_cpu_data.x86_model);
 
-	if (mic_p2p_proxy_enable && (boot_cpu_data.x86==6) && (boot_cpu_data.x86_model==45)) {
+	if (mic_p2p_proxy_enable && (boot_cpu_data.x86==6) &&
+		(boot_cpu_data.x86_model == 45 || boot_cpu_data.x86_model == 62)) {
 		int numa_node = dev_to_node(&mic_ctx->bi_pdev->dev);
-		if (-1 != numa_node)
+		if (-1 != numa_node) {
+			if (boot_cpu_data.x86_model == 45)
+				ms_info.mi_proxy_dma_threshold = SCIF_PROXY_DMA_THRESHOLD_JKT;
+			if (boot_cpu_data.x86_model == 62)
+				ms_info.mi_proxy_dma_threshold = SCIF_PROXY_DMA_THRESHOLD_IVT;
 			cmdlen += snprintf(buf + cmdlen, MIC_CMDLINE_BUFSIZE - cmdlen,
 				" numa_node=%d", numa_node);
+			cmdlen += snprintf(buf + cmdlen, MIC_CMDLINE_BUFSIZE - cmdlen,
+				" p2p_proxy_thresh=%lld", ms_info.mi_proxy_dma_threshold);
+		}
 	}
 
 	if (mic_ctx->sysfs_info.cmdline != NULL)
@@ -800,7 +808,7 @@ exit:
 		mic_setstate(mic_ctx, MIC_ONLINE);
 		mic_ctx->boot_count++;
 		printk("ELF booted succesfully\n");
-		0;
+		;
 	}
 	return status;
 }
@@ -933,7 +941,7 @@ void ramoops_flip(mic_ctx_t *mic_ctx);
 int
 adapter_shutdown_device(mic_ctx_t *mic_ctx)
 {
-	0;
+	;
 
 	if (micpm_get_reference(mic_ctx, true))
 		return 0;
@@ -957,7 +965,7 @@ adapter_shutdown_device(mic_ctx_t *mic_ctx)
 int
 adapter_stop_device(mic_ctx_t *mic_ctx, int wait_reset, int reattempt)
 {
-	0;
+	;
 
 	micvcons_stop(mic_ctx);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34) || \
@@ -1182,6 +1190,70 @@ mic_shutdown_host_doorbell_intr_handler(mic_ctx_t *mic_ctx, int doorbell)
 	return 0;
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+static int
+ramoops_proc_show(struct seq_file *m, void *data)
+{
+	uint64_t id = ((uint64_t)data) & 0xffffffff;
+	uint64_t entry = ((uint64_t)data) >> 32;
+	struct list_head *pos, *tmpq;
+	bd_info_t *bd = NULL;
+	mic_ctx_t *mic_ctx = NULL;
+	char *record;
+	char *end;
+	int size = 0;
+	int l = 0;
+	char *output;
+	unsigned long flags;
+
+	list_for_each_safe(pos, tmpq, &mic_data.dd_bdlist) {
+		bd = list_entry(pos, bd_info_t, bi_list);
+		mic_ctx = &bd->bi_ctx;
+		if (mic_ctx->bi_id == id)
+			break;
+	}
+
+	if (mic_ctx == NULL)
+		return 0;
+
+	spin_lock_irqsave(&mic_ctx->ramoops_lock, flags);
+
+	record = mic_ctx->ramoops_va[entry];
+	if (record == NULL) {
+		spin_unlock_irqrestore(&mic_ctx->ramoops_lock, flags);
+		return -EEXIST;
+	}
+
+	size = mic_ctx->ramoops_size;
+	end = record + size;
+
+	if ((output = kzalloc(size, GFP_ATOMIC)) == NULL) {
+		spin_unlock_irqrestore(&mic_ctx->ramoops_lock, flags);
+		return -ENOMEM;
+	}
+
+	l += scnprintf(output, size, "%s", record);
+
+	spin_unlock_irqrestore(&mic_ctx->ramoops_lock, flags);
+
+	seq_printf(m, "%s", output);
+	return 0;
+}
+
+static int
+ramoops_proc_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, ramoops_proc_show, NULL);
+}
+
+struct file_operations ramoops_proc_fops = {
+	.open		= ramoops_proc_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+        .release 	= single_release,
+};
+
+#else // LINUX VERSION
 static int
 ramoops_read(char *buf, char **start, off_t offset, int len, int *eof, void *data)
 {
@@ -1241,6 +1313,7 @@ ramoops_read(char *buf, char **start, off_t offset, int len, int *eof, void *dat
 	*start = buf;
 	return left_to_read;
 }
+#endif // LINUX VERSION
 
 int
 set_ramoops_pa(mic_ctx_t *mic_ctx)
@@ -1271,6 +1344,15 @@ ramoops_probe(mic_ctx_t *mic_ctx)
 		if (set_ramoops_pa(mic_ctx))
 			return;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+		snprintf(name, 64, "mic%d", mic_ctx->bi_id);
+		proc_create_data(name, 0444, ramoops_dir, &ramoops_proc_fops,
+				 (void *)(long)mic_ctx->bi_id);
+
+		snprintf(name, 64, "mic%d_prev", mic_ctx->bi_id);
+		proc_create_data(name, 0444, ramoops_dir, &ramoops_proc_fops,
+				 (void *)((long)mic_ctx->bi_id | (1L << 32)));
+#else // LINUX VERSION
 		snprintf(name, 64, "mic%d", mic_ctx->bi_id);
 		if (create_proc_read_entry(name, 0444, ramoops_dir, ramoops_read,
 					   (void *)(long)mic_ctx->bi_id) == NULL)
@@ -1280,6 +1362,7 @@ ramoops_probe(mic_ctx_t *mic_ctx)
 		if (create_proc_read_entry(name, 0444, ramoops_dir, ramoops_read,
 					   (void *)((long)mic_ctx->bi_id | (1L << 32))) == NULL)
 			printk("Failed to intialize /proc/mic_ramoops/%s\n", name);
+#endif //LINUX VERSION
 	} else {
 		mic_ctx->ramoops_size = 0;
 	}
@@ -1418,9 +1501,9 @@ adapter_init_device(mic_ctx_t *mic_ctx)
 	init_waitqueue_head(&mic_ctx->resetwq);
 	init_waitqueue_head(&mic_ctx->ioremapwq);
 	init_timer(&mic_ctx->boot_timer);
-	if (!(mic_ctx->resetworkq = create_singlethread_workqueue("RESET WORK")))
+	if (!(mic_ctx->resetworkq = __mic_create_singlethread_workqueue("RESET WORK")))
 		return -ENOMEM;
-	if (!(mic_ctx->ioremapworkq = create_singlethread_workqueue("IOREMAP_WORK"))) {
+	if (!(mic_ctx->ioremapworkq = __mic_create_singlethread_workqueue("IOREMAP_WORK"))) {
 		err = -EINVAL;
 		goto destroy_reset_wq;
 	}
@@ -1708,7 +1791,11 @@ static void adapter_dpc(unsigned long dpc)
 
 void ramoops_init(void)
 {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+	ramoops_dir = proc_mkdir("mic_ramoops", NULL);
+#else
 	ramoops_dir = create_proc_entry("mic_ramoops", S_IFDIR | S_IRUGO, NULL);
+#endif
 }
 
 void ramoops_exit(void)
@@ -1740,7 +1827,11 @@ void ramoops_remove(mic_ctx_t *mic_ctx)
 
 void vmcore_init(void)
 {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+	vmcore_dir = proc_mkdir("mic_vmcore", NULL);
+#else
 	vmcore_dir = create_proc_entry("mic_vmcore", S_IFDIR | S_IRUGO, NULL);
+#endif
 }
 
 void vmcore_exit(void)

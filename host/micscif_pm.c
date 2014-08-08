@@ -348,6 +348,14 @@ mic_pm_handle_message(mic_ctx_t *mic_ctx, pm_recv_msg_t *recv_msg)
 		res = handle_pc3_ready(mic_ctx);
 		break;
 	case PM_MESSAGE_OPEN_ACK:
+		/*Size of the payload needs to be equal to what the
+		 * host is trying to cast it to
+		 */
+		if (sizeof(pm_msg_pm_options) != recv_msg->msg_header.len) {
+			printk(KERN_ERR "Incompatible PM message. Opcode = %d\n", 
+				recv_msg->msg_header.opcode);
+			return -EINVAL;
+		}
 		res = handle_open_ack(mic_ctx,
 			((pm_msg_pm_options *) recv_msg->msg_body));
 		break;
@@ -698,7 +706,7 @@ setup_pm_workqueues(mic_ctx_t *mic_ctx)
 		 "PM_RESUME_WQ %d", mic_get_scifnode_id(mic_ctx));
 
 	if (!(mic_ctx->micpm_ctx.resume.wq
-		= create_singlethread_workqueue(
+		= __mic_create_singlethread_workqueue(
 				mic_ctx->micpm_ctx.resume.wq_name))) {
 		err = -ENOMEM;
 		goto err;
@@ -710,7 +718,7 @@ setup_pm_workqueues(mic_ctx_t *mic_ctx)
 			 "RECV_WORK_Q %d", mic_get_scifnode_id(mic_ctx));
 
 	if (!(mic_ctx->micpm_ctx.recv.wq
-			= create_singlethread_workqueue(
+			= __mic_create_singlethread_workqueue(
 					mic_ctx->micpm_ctx.recv.wq_name))) {
 		err = -ENOMEM;
 		goto err;
@@ -722,7 +730,7 @@ setup_pm_workqueues(mic_ctx_t *mic_ctx)
 		 "MSG_HANDLER_WQ %d", mic_get_scifnode_id(mic_ctx));
 
 	if (!(mic_ctx->micpm_ctx.handle_msg.wq
-			= create_singlethread_workqueue(
+			= __mic_create_singlethread_workqueue(
 					mic_ctx->micpm_ctx.handle_msg.wq_name))) {
 		err = -ENOMEM;
 		goto err;
@@ -734,7 +742,7 @@ setup_pm_workqueues(mic_ctx_t *mic_ctx)
 			 "PC6_WORK_Q %d", mic_get_scifnode_id(mic_ctx));
 
 	if (!(mic_ctx->micpm_ctx.pc6_entry_wq
-		= create_singlethread_workqueue(
+		= __mic_create_singlethread_workqueue(
 				mic_ctx->micpm_ctx.pc6_wq_name))) {
 		err = -ENOMEM;
 		goto err;
@@ -782,7 +790,7 @@ int micpm_init()
 			sizeof(mic_data.dd_pm.accept.wq_name),"PM ACCEPT");
 
 	mic_data.dd_pm.accept.wq =
-			create_singlethread_workqueue(mic_data.dd_pm.accept.wq_name);
+			__mic_create_singlethread_workqueue(mic_data.dd_pm.accept.wq_name);
 	if (!mic_data.dd_pm.accept.wq){
 		err = -ENOMEM;
 		PM_DEBUG("create workqueue returned null\n");

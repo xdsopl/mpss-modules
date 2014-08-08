@@ -54,6 +54,7 @@ bool mic_crash_dump_enabled = 1;
 int
 micscif_init(void)
 {
+	int err;
 	ms_info.mi_nodeid = 0;	// Host is node 0
 	ms_info.mi_maxid = 0;	// Host is at start the max card ID
 	ms_info.mi_total = 1;	// Host will know about this many MIC cards
@@ -65,6 +66,7 @@ micscif_init(void)
 	spin_lock_init(&ms_info.mi_rmalock);
 	mutex_init (&ms_info.mi_fencelock);
 	mutex_init (&ms_info.mi_event_cblock);
+	mutex_init (&ms_info.mi_nb_connect_lock);
 	INIT_LIST_HEAD(&ms_info.mi_uaccept);
 	INIT_LIST_HEAD(&ms_info.mi_listen);
 	INIT_LIST_HEAD(&ms_info.mi_zombie);
@@ -77,6 +79,7 @@ micscif_init(void)
 #endif
 	INIT_LIST_HEAD(&ms_info.mi_fence);
 	INIT_LIST_HEAD(&ms_info.mi_event_cb);
+	INIT_LIST_HEAD(&ms_info.mi_nb_connect_list);
 	ms_info.mi_watchdog_to = DEFAULT_WATCHDOG_TO;
 #ifdef MIC_IS_EMULATION
 	ms_info.mi_watchdog_enabled = 0;
@@ -93,12 +96,27 @@ micscif_init(void)
 	ms_info.mmu_notif_cnt = (atomic_long_t) ATOMIC_LONG_INIT(0);
 #endif
 #endif
-	ms_info.mi_misc_wq = create_singlethread_workqueue("SCIF_MISC");
+	ms_info.mi_misc_wq = __mic_create_singlethread_workqueue("SCIF_MISC");
+	if (!ms_info.mi_misc_wq) {
+		err = -ENOMEM;
+		goto wq_error;
+	}
 	INIT_WORK(&ms_info.mi_misc_work, micscif_misc_handler);
 #ifdef CONFIG_MMU_NOTIFIER
 	ms_info.mi_mmu_notif_wq = create_singlethread_workqueue("SCIF_MMU");
+	if (!ms_info.mi_mmu_notif_wq) {
+		err = -ENOMEM;
+		goto wq_error;
+	}
 	INIT_WORK(&ms_info.mi_mmu_notif_work, micscif_mmu_notif_handler);
 #endif
+	ms_info.mi_conn_wq = __mic_create_singlethread_workqueue("SCIF_NB_CONN");
+	if (!ms_info.mi_conn_wq) {
+		err = -ENOMEM;
+		goto wq_error;
+	}
+	INIT_WORK(&ms_info.mi_conn_work, micscif_conn_handler);
+
 	//pr_debug("micscif_create(%d) \n", num_bds);
 
 	// Setup information for self aka loopback.
@@ -112,10 +130,19 @@ micscif_init(void)
 	init_waitqueue_head(&scif_dev[SCIF_HOST_NODE].sd_mmap_wq);
 	mutex_init (&scif_dev[SCIF_HOST_NODE].sd_lock);
 	ms_info.mi_rma_tc_limit = SCIF_RMA_TEMP_CACHE_LIMIT;
-	ms_info.mi_proxy_dma_threshold = SCIF_PROXY_DMA_THRESHOLD;
 	ms_info.en_msg_log = 0;
 	scif_proc_init();
 	return 0;
+wq_error:
+	if (ms_info.mi_misc_wq)
+		destroy_workqueue(ms_info.mi_misc_wq);
+#ifdef CONFIG_MMU_NOTIFIER
+	if (ms_info.mi_mmu_notif_wq)
+		destroy_workqueue(ms_info.mi_mmu_notif_wq);
+#endif
+	if (ms_info.mi_conn_wq)
+		destroy_workqueue(ms_info.mi_conn_wq);
+	return err;
 }
 
 void
@@ -127,6 +154,7 @@ micscif_destroy(void)
 	destroy_workqueue(ms_info.mi_mmu_notif_wq);
 #endif
 	destroy_workqueue(ms_info.mi_misc_wq);
+	destroy_workqueue(ms_info.mi_conn_wq);
 	micscif_destroy_loopback_qp(&scif_dev[SCIF_HOST_NODE]);
 	scif_proc_cleanup();
 	mic_debug_uninit();
@@ -175,7 +203,7 @@ micscif_probe(mic_ctx_t *mic_ctx)
 	snprintf(scifdev->sd_ln_wqname, sizeof(scifdev->sd_intr_wqname),
 			"SCIF LOSTNODE %d", scifdev->sd_node);
 	if (!(scifdev->sd_ln_wq =
-		create_singlethread_workqueue(scifdev->sd_ln_wqname)))
+		__mic_create_singlethread_workqueue(scifdev->sd_ln_wqname)))
 		printk(KERN_ERR "%s %d wq creation failed\n", __func__, __LINE__);
 	INIT_DELAYED_WORK(&scifdev->sd_watchdog_work, micscif_watchdog_handler);
 	/*

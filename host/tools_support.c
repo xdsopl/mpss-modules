@@ -291,7 +291,7 @@ send_flash_cmd(mic_ctx_t *mic_ctx, MIC_FLASH_CMD_TYPE type, void *data, uint32_t
 		SBOX_WRITE(scratch1reg.value, mmio_va, SBOX_SCRATCH1);
 
 		mic_send_bootstrap_intr(mic_ctx);
-		0;
+		;
 
 	break;
 

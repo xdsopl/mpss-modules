@@ -46,6 +46,10 @@
 
 #include "mic/micscif.h"
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+#include <linux/sched/rt.h>
+#endif
+
 struct poll_table_page {
 	struct poll_table_page *next;
 	struct poll_table_entry *entry;
@@ -233,7 +237,11 @@ static void __pollwait(struct file *filp __attribute__((unused)), wait_queue_hea
 		return;
 	entry->filp = NULL;
 	entry->wait_address = wait_address;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+	entry->key = p->_key;
+#else
 	entry->key = p->key;
+#endif
 	init_waitqueue_func_entry(&entry->wait, pollwake);
 	entry->wait.private = pwq;
 	add_wait_queue(wait_address, &entry->wait);
@@ -288,8 +296,11 @@ static inline unsigned int do_pollfd(struct scif_pollepd *pollfd, poll_table *pw
 		mask = POLLNVAL;
 		mask = DEFAULT_POLLMASK;
 		if (pwait)
-			pwait->key = pollfd->events |
-					POLLERR | POLLHUP;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0))
+			pwait->_key = pollfd->events | POLLERR | POLLHUP;
+#else
+			pwait->key = pollfd->events | POLLERR | POLLHUP;
+#endif
 		mask = scif_poll_kernel(pwait, epd);
 		/* Mask out unneeded events. */
 		mask &= pollfd->events | POLLERR | POLLHUP;
