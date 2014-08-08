@@ -1,0 +1,9 @@
+This is a port of the mic module for the Intel Xeon Phi Coprocessor for linux-3.16
+
+mpss-modules-3.3.3 untested but compiles fine on linux-3.16.0
+
+to install, edit Makefile (if needed) and execute "make && sudo make install"
+
+for installation using DKMS, execute "sudo ./install.sh"
+to deinstall DKMS module, execute "sudo ./uninstall.sh"
+
