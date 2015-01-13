@@ -10,10 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed Knights Ferry,
  * and the Intel product codenamed Knights Corner, and are not backward
@@ -151,11 +147,5 @@ void micscif_display_all_windows(struct list_head *head);
 int micscif_rma_list_dma_copy_wrapper(struct endpt *epd, struct mic_copy_work *work, struct dma_channel *chan, off_t loffset);
 
 void micscif_rma_local_cpu_copy(uint64_t offset, struct reg_range_t *window, uint8_t *temp, size_t remaining_len, bool to_temp);
-
-#if !defined(_MIC_SCIF_) && defined(CONFIG_ML1OM)
-int micscif_rma_list_gtt_map(struct reg_range_t *start_window, uint64_t offset, int nr_pages);
-
-void micscif_rma_list_gtt_unmap(struct reg_range_t *start_window, uint64_t offset, int nr_pages);
-#endif
 
 #endif /* MICSCIF_RMA_LIST_H */

@@ -11,10 +11,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed Knights Ferry,
  * and the Intel product codenamed Knights Corner, and are not backward
@@ -389,8 +385,7 @@ micvnet_msg_recv_dma_complete(struct micvnet_info *vnet_info,
 		return;
 
 	rnode = list_entry((&vnet_info->vi_rx_skb)->next, struct rx_node, list);
-	/* Our OOO message handling guarantees this */
-	BUG_ON(rnode->phys != msg->dst_phys);
+	/* Our OOO message handling guarantees that rnode->phys == msg->dst_phys */
 
 	vnet_info->vi_netdev->stats.rx_bytes += msg->size;
 	list_del(&rnode->list);
@@ -1275,7 +1270,8 @@ micvnet_init_rx_skbs(struct micvnet_info *vnet_info)
 	struct rx_node *rnode;
 	int i, ret = 0;
 
-	if (vnet_num_buffers > VNET_MAX_SKBS)
+
+	if ( (vnet_num_buffers <= 0) || (vnet_num_buffers > VNET_MAX_SKBS) )
 		vnet_num_buffers = VNET_MAX_SKBS;
 
 	for (i = 0; i < vnet_num_buffers; i++) {
@@ -1326,6 +1322,7 @@ micvnet_initiate_link_down(struct micvnet_info *vnet_info)
 static void
 micvnet_stop_deinit(struct micvnet_info *vnet_info)
 {
+	flush_workqueue(vnet_info->vi_wq);
 	atomic_set(&vnet_info->vi_state, MICVNET_STATE_UNINITIALIZED);
 
 	micvnet_deinit_dma(vnet_info);
@@ -1487,12 +1484,13 @@ micvnet_execute_stop(struct micvnet_info *vnet_info)
 		goto exit;
 #endif
 	micvnet_initiate_link_down(vnet_info);
-
-	if (vnet_info->link_down_initiator){
+	if (vnet_info->link_down_initiator && !(vnet_info->mic_ctx->state == MIC_SHUTDOWN && vnet_info->mic_ctx->sdbic1)){
 		ret = wait_event_interruptible_timeout(
 			vnet_info->stop_waitq, 
 			(atomic_read(&vnet_info->vi_state) == MICVNET_STATE_BEGIN_UNINIT), 
 			STOP_WAIT_TIMEOUT);
+		if (!ret)
+			printk(KERN_ERR "%s: timeout waiting for link down message response\n", __func__);
 	}
 
 #ifdef HOST

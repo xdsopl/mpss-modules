@@ -10,10 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed Knights Ferry,
  * and the Intel product codenamed Knights Corner, and are not backward
@@ -66,7 +62,7 @@ micscif_init(void)
 	spin_lock_init(&ms_info.mi_rmalock);
 	mutex_init (&ms_info.mi_fencelock);
 	mutex_init (&ms_info.mi_event_cblock);
-	mutex_init (&ms_info.mi_nb_connect_lock);
+	spin_lock_init(&ms_info.mi_nb_connect_lock);
 	INIT_LIST_HEAD(&ms_info.mi_uaccept);
 	INIT_LIST_HEAD(&ms_info.mi_listen);
 	INIT_LIST_HEAD(&ms_info.mi_zombie);
@@ -189,7 +185,6 @@ micscif_probe(mic_ctx_t *mic_ctx)
 	scifdev->sd_node = mic_ctx->bi_id + 1;
 	scifdev->sd_state = SCIFDEV_STOPPED;
 	scifdev->mm_sbox = mic_ctx->mmio.va + HOST_SBOX_BASE_ADDRESS;
-	scifdev->mm_gtt = mic_ctx->mmio.va + HOST_GTT_BASE_ADDRESS;
 
 	/* This workqueue thread will handle all card->host interrupt processing. */
 	micscif_setup_interrupts(scifdev);

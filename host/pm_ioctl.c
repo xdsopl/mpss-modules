@@ -10,10 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed Knights Ferry,
  * and the Intel product codenamed Knights Corner, and are not backward
@@ -474,13 +470,6 @@ micpm_dbg_init(mic_ctx_t *mic_ctx)
 	 * get value to verfy that message was successfully sent, looped back by card and received.(0 = success)
 	*/
 	debugfs_create_file("testmsg", S_IRUGO | S_IWUSR, micpm_ctx->pmdbg_dir, (void*)id, &testmsg_fops);
-
-	/*
-	 * Create debugfs entry for enabling pc6
-	 * set value = 1 to enable pc6 transition from DPC3 (C0 only, otherwise it is no-op)
-	 * set value = 0 to disable the transition. Card will stay in DPC3 and will never enter PC6.
-	 * get value to check if pc6 transition testing is enabled/disabled
-	 */
 
 	/* Create debugfs entry for showing for each node 'i' , all nodes 'j' i is dependent on */
 	debugfs_create_file("depgraph_i2j",

@@ -10,10 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed Knights Ferry,
  * and the Intel product codenamed Knights Corner, and are not backward
@@ -284,7 +280,6 @@ set_micstate(struct device *dev, struct device_attribute *attr, const char *buf,
 	} else if (match_micstate(&buf, "boot:flash:")) {
 		mode = MODE_FLASH;
 	} else if (sysfs_streq(buf, "reset")) {
-		int reattempt = !RESET_REATTEMPT;
 
 		mutex_lock(&mic_ctx->state_lock);
 		if (mic_ctx->state == MIC_READY) {
@@ -292,11 +287,8 @@ set_micstate(struct device *dev, struct device_attribute *attr, const char *buf,
 			return -EACCES;
 		}
 
-		if (mic_ctx->state == MIC_RESET)
-			reattempt = RESET_REATTEMPT;
-
 		mutex_unlock(&mic_ctx->state_lock);
-		adapter_stop_device(mic_ctx, 1, reattempt);
+		adapter_stop_device(mic_ctx, 1, 0);
 		return count;
 	} else if (sysfs_streq(buf, "reset:force")) {
 		int reattempt = !RESET_REATTEMPT;

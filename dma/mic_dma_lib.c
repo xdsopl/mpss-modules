@@ -10,10 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed Knights Ferry,
  * and the Intel product codenamed Knights Corner, and are not backward
@@ -452,8 +448,8 @@ mic_dma_lib_init(uint8_t *mmio_va_base, struct mic_dma_ctx_t *dma_ctx)
 		// This has to be done from card side
 		ch->chan = md_mic_dma_request_chan(&dma_ctx->dma_dev, owner);
 		KASSERT((ch->chan != NULL), "dummy\n");
-
 		ch->ch_num = ch->chan->ch_num;
+
 #ifdef _MIC_SCIF_
 		/*
 		 * Host driver would have executed by now and thus setup the

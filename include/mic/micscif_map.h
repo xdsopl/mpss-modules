@@ -10,10 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed Knights Ferry,
  * and the Intel product codenamed Knights Corner, and are not backward
@@ -77,19 +73,16 @@ map_virt_into_aperture(phys_addr_t *out_offset,
 		struct micscif_dev *dev,
 		size_t size)
 {
-	int err = 0;
-
 	if (is_self_scifdev(dev))
 		*out_offset = virt_to_phys(local);
 	else {
-		err = micscif_map_gtt(out_offset,
-				virt_to_phys(local), size, &scif_dev[0]);
 		/* Error unwinding code relies on return value being zero */
-		if (dev != &scif_dev[0] && !err)
+		*out_offset = virt_to_phys(local);
+		if (dev != &scif_dev[0])
 			*out_offset = *out_offset + dev->sd_base_addr;
 	}
 
-	return err;
+	return 0;
 }
 
 /*
@@ -102,42 +95,25 @@ map_page_into_aperture(phys_addr_t *out_offset,
 			struct page *page,
 			struct micscif_dev *dev)
 {
-	int err = 0;
-
 	if (is_self_scifdev(dev))
 		*out_offset = page_to_phys(page);
 	else {
-		err = micscif_map_gtt(out_offset,
-				page_to_phys(page), PAGE_SIZE, &scif_dev[0]);
 		/* Error unwinding code relies on return value being zero */
-		if (dev != &scif_dev[0] && !err)
+		*out_offset = page_to_phys(page);
+		if (dev != &scif_dev[0])
 			*out_offset = *out_offset + dev->sd_base_addr;
 	}
-	return err;
+	return 0;
 }
 
 /*
- * Unmaps the GTT index passed in local from the aperture.
- * Nothing to do in the loopback case.
+ * Nothing to do on card side
  */
-static __always_inline int
+static __always_inline void
 unmap_from_aperture(phys_addr_t local,
 		struct micscif_dev *dev,
 		size_t size)
 {
-	int err = 0;
-
-	if (!is_self_scifdev(dev)) {
-		/*
-		 * The address passed in local may also be an address
-		 * that was mapped into the remote node's address
-		 * space
-		 */
-		if (local > dev->sd_base_addr)
-			local = local - dev->sd_base_addr;
-		err = micscif_unmap_gtt_offset(local, size, &scif_dev[0]);
-	}
-	return err;
 }
 
 /*
@@ -249,17 +225,15 @@ map_page_into_aperture(phys_addr_t *out_offset,
  * Unmaps the physical address passed in lo/al from the PCIe aperture.
  * Nothing to do in the loopback case.
  */
-static __always_inline int
+static __always_inline void
 unmap_from_aperture(phys_addr_t local,
 	struct micscif_dev *dev,
 	size_t size)
 {
-	int err = 0;
 
 	if (!is_self_scifdev(dev))
 		mic_ctx_unmap_single(get_per_dev_ctx(dev->sd_node - 1),
 			local, size);
-	return err;
 }
 
 /*

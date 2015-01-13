@@ -82,7 +82,6 @@ mic-objs += host/vmcore.o
 mic-objs += micscif/micscif_api.o
 mic-objs += micscif/micscif_debug.o
 mic-objs += micscif/micscif_fd.o
-mic-objs += micscif/micscif_gtt.o
 mic-objs += micscif/micscif_intr.o
 mic-objs += micscif/micscif_nm.o
 mic-objs += micscif/micscif_nodeqp.o

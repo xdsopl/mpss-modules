@@ -10,10 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed Knights Ferry,
  * and the Intel product codenamed Knights Corner, and are not backward
@@ -39,7 +35,6 @@
 
 #include "mic/micscif.h"
 #include "mic/micscif_smpt.h"
-#include "mic/micscif_gtt.h"
 #include "mic/micscif_kmem_cache.h"
 #include "mic/micscif_rma_list.h"
 #ifndef _MIC_SCIF_
@@ -273,25 +268,16 @@ static __always_inline int micscif_setup_proxy_dma(struct endpt *ep)
  *
  * Tears down data structures setup for P2P Proxy DMAs.
  */
-int micscif_teardown_proxy_dma(struct endpt *ep)
+void micscif_teardown_proxy_dma(struct endpt *ep)
 {
 	struct endpt_rma_info *rma = &ep->rma_info;
-	int err = 0;
-
 	mutex_lock(&rma->rma_lock);
 	if (rma->proxy_dma_va) {
-		err = unmap_from_aperture(rma->proxy_dma_phys, ep->remote_dev, PAGE_SIZE);
-		if (err) {
-			printk(KERN_ERR "%s %d error %d\n", 
-					__func__, __LINE__, err);
-			goto error;
-		}
+		unmap_from_aperture(rma->proxy_dma_phys, ep->remote_dev, PAGE_SIZE);
 		scif_free(rma->proxy_dma_va, PAGE_SIZE);
 		rma->proxy_dma_va = NULL;
 	}
-error:
 	mutex_unlock(&rma->rma_lock);
-	return err;
 }
 
 /**
@@ -569,7 +555,7 @@ retry:
  */
 int micscif_destroy_window(struct endpt *ep, struct reg_range_t *window)
 {
-	int j, err;
+	int j;
 	struct scif_pinned_pages *pinned_pages = window->pinned_pages;
 	int64_t nr_pages = window->nr_pages;
 
@@ -584,31 +570,14 @@ int micscif_destroy_window(struct endpt *ep, struct reg_range_t *window)
 	if (!window->offset_freed)
 		micscif_free_window_offset(ep, window->offset,
 			window->nr_pages << PAGE_SHIFT);
-#if defined(_MIC_SCIF_) && defined(CONFIG_ML1OM)
-	if (window->phys_addr) {
-		for (j = 0; j < window->nr_pages; j++) {
-			if (window->phys_addr[j]) {
-				err = unmap_from_aperture(
-					window->phys_addr[j],
-					ep->remote_dev,
-					PAGE_SIZE);
-				if (err < 0)
-					return err;
-			}
-		}
-	}
-#else
 	for (j = 0; j < window->nr_contig_chunks; j++) {
 		if (window->dma_addr[j]) {
-			err = unmap_from_aperture(
+			unmap_from_aperture(
 				window->dma_addr[j],
 				ep->remote_dev,
 				window->num_pages[j] << PAGE_SHIFT);
-			if (err < 0)
-				return err;
 		}
 	}
-#endif
 
 	/*
 	 * Decrement references for this set of pinned pages from
@@ -768,73 +737,31 @@ error_window:
  */
 void micscif_destroy_remote_lookup(struct endpt *ep, struct reg_range_t *window)
 {
-	int i, j, err;
+	int i, j;
 
 	RMA_MAGIC(window);
 	if (window->nr_lookup) {
 		for (i = 0, j = 0; i < window->nr_pages;
 			i += NR_PHYS_ADDR_IN_PAGE, j++) {
-#ifdef CONFIG_ML1OM
-			if (window->temp_phys_addr_lookup.lookup &&
-				window->temp_phys_addr_lookup.lookup[j]) {
-				err = unmap_from_aperture(
-				window->temp_phys_addr_lookup.lookup[j],
-				ep->remote_dev, PAGE_SIZE);
-				BUG_ON(err);
-			}
-			if (window->phys_addr_lookup.lookup &&
-				window->phys_addr_lookup.lookup[j]) {
-				err = unmap_from_aperture(
-				window->phys_addr_lookup.lookup[j],
-				ep->remote_dev, PAGE_SIZE);
-				BUG_ON(err);
-			}
-#endif
 			if (window->dma_addr_lookup.lookup &&
 				window->dma_addr_lookup.lookup[j]) {
-				err = unmap_from_aperture(
+				unmap_from_aperture(
 				window->dma_addr_lookup.lookup[j],
 				ep->remote_dev, PAGE_SIZE);
-				BUG_ON(err);
 			}
 		}
-#ifdef CONFIG_ML1OM
-		if (window->temp_phys_addr_lookup.offset) {
-			err = unmap_from_aperture(
-				window->temp_phys_addr_lookup.offset,
-				ep->remote_dev, window->nr_lookup *
-				sizeof(*window->temp_phys_addr_lookup.lookup));
-			BUG_ON(err);
-		}
-		if (window->temp_phys_addr_lookup.lookup)
-			scif_free(window->temp_phys_addr_lookup.lookup, window->nr_lookup *
-				sizeof(*(window->temp_phys_addr_lookup.lookup)));
-
-		if (window->phys_addr_lookup.offset) {
-			err = unmap_from_aperture(
-				window->phys_addr_lookup.offset,
-				ep->remote_dev, window->nr_lookup *
-				sizeof(*window->phys_addr_lookup.lookup));
-			BUG_ON(err);
-		}
-		if (window->phys_addr_lookup.lookup)
-			scif_free(window->phys_addr_lookup.lookup, window->nr_lookup *
-				sizeof(*(window->phys_addr_lookup.lookup)));
-#endif
 		if (window->dma_addr_lookup.offset) {
-			err = unmap_from_aperture(
+			unmap_from_aperture(
 				window->dma_addr_lookup.offset,
 				ep->remote_dev, window->nr_lookup *
 				sizeof(*window->dma_addr_lookup.lookup));
-			BUG_ON(err);
 		}
 		if (window->dma_addr_lookup.lookup)
 			scif_free(window->dma_addr_lookup.lookup, window->nr_lookup *
 				sizeof(*(window->dma_addr_lookup.lookup)));
 		if (window->mapped_offset) {
-			err = unmap_from_aperture(window->mapped_offset,
+			unmap_from_aperture(window->mapped_offset,
 				ep->remote_dev, sizeof(*window));
-			BUG_ON(err);
 		}
 		window->nr_lookup = 0;
 	}
@@ -987,7 +914,7 @@ int micscif_map_window_pages(struct endpt *ep, struct reg_range_t *window, bool 
 						nr_pages = pinned_pages->num_pages[k];
 						window->temp_phys_addr[l]
 							&= ~RMA_HUGE_NR_PAGE_MASK;
-						(void)unmap_from_aperture(
+						unmap_from_aperture(
 							window->temp_phys_addr[l],
 							ep->remote_dev,
 							nr_pages << PAGE_SHIFT);

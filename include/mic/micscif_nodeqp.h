@@ -10,10 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed Knights Ferry,
  * and the Intel product codenamed Knights Corner, and are not backward
@@ -82,10 +78,6 @@
 #define SCIF_SIG_REMOTE		35 /* SCIF Remote Fence Remote Signal Request */
 #define SCIF_SIG_ACK		36 /* SCIF Remote Fence Remote Signal Success */
 #define SCIF_SIG_NACK		37 /* SCIF Remote Fence Remote Signal Failure */
-#define SCIF_MAP_GTT		38 /* Notify peer about GTT Map request */
-#define SCIF_MAP_GTT_ACK	39 /* Notify peer about GTT Map ACK */
-#define SCIF_MAP_GTT_NACK	40 /* Notify peer about GTT Map NACK */
-#define SCIF_UNMAP_GTT		41 /* Notify peer about GTT Unmap request */
 #define SCIF_NODE_CREATE_DEP	42 /* Notify the Host that a new dependency is
  				    * being created between two nodes
  				    */
@@ -100,10 +92,6 @@
 #define SCIF_NODE_ALIVE		49 /* Check if kn* card is alive */
 #define SCIF_NODE_ALIVE_ACK	50 /* ACK the for above message */
 #define SMPT_SET		51 /* Add a smpt entry */
-#define SCIF_DMA_GTT_MAP	52 /* Map in a GTT entry for unaligned DMA */
-#define SCIF_DMA_GTT_ACK	53 /* Ack for SCIF_DMA_GTT_MAP */
-#define SCIF_DMA_GTT_NACK	54 /* Nack for SCIF_DMA_GTT_MAP */
-#define SCIF_DMA_GTT_UNMAP	55 /* Map in a GTT entry for unaligned DMA */
 #define SCIF_PROXY_DMA		56 /* Proxies DMA read requests to peer for performance */
 #define SCIF_PROXY_ORDERED_DMA	57 /* Proxies DMA read requests to peer for performance */
 #define SCIF_NODE_CONNECT	58 /* Setup a p2p connection b/w two nodes */
@@ -206,7 +194,7 @@ int micscif_setup_qp_accept(struct micscif_qp *qp, dma_addr_t *qp_offset, dma_ad
 int micscif_setup_qp_connect_response(struct micscif_dev *scifdev, struct micscif_qp *qp, uint64_t payload);
 int micscif_setup_loopback_qp(struct micscif_dev *scifdev);
 int micscif_destroy_loopback_qp(struct micscif_dev *scifdev);
-int micscif_teardown_ep(void *endpt);
+void micscif_teardown_ep(void *endpt);
 void micscif_add_epd_to_zombie_list(struct endpt *ep, bool mi_eplock_held);
 
 #endif  /* MICSCIF_NODEQP */

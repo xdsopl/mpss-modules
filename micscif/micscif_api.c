@@ -10,10 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed Knights Ferry,
  * and the Intel product codenamed Knights Corner, and are not backward
@@ -148,10 +144,18 @@ __scif_close(scif_epd_t epd)
 	unsigned long sflags;
 	enum endptstate oldstate;
 	int err;
+	bool flush_conn;
 
 	pr_debug("SCIFAPI close: ep %p %s\n", ep, scif_ep_states[ep->state]);
 
 	might_sleep();
+
+	spin_lock(&ep->lock);
+	flush_conn = (ep->conn_async_state == ASYNC_CONN_INPROGRESS);
+	spin_unlock(&ep->lock);
+
+	if (flush_conn)
+		flush_workqueue(ms_info.mi_conn_wq);
 
 	micscif_inc_node_refcnt(ep->remote_dev, 1);
 
@@ -391,9 +395,6 @@ __scif_flush(scif_epd_t epd)
 	int err;
 
 	might_sleep();
-
-	if (ep->conn_async_state == ASYNC_CONN_INPROGRESS)
-		flush_workqueue(ms_info.mi_conn_wq);
 
 	micscif_inc_node_refcnt(ep->remote_dev, 1);
 
@@ -834,13 +835,13 @@ void micscif_conn_handler(struct work_struct *work)
 
 	do {
 		ep = NULL;
-		mutex_lock(&ms_info.mi_nb_connect_lock);
+		spin_lock(&ms_info.mi_nb_connect_lock);
 		if (!list_empty(&ms_info.mi_nb_connect_list)) {
 			ep = list_first_entry(&ms_info.mi_nb_connect_list, 
 					struct endpt, conn_list);
 			list_del(&ep->conn_list);
 		}
-		mutex_unlock(&ms_info.mi_nb_connect_lock);
+		spin_unlock(&ms_info.mi_nb_connect_lock);
 		if (ep) {
 			ep->conn_err = scif_conn_func(ep);
 			wake_up_interruptible(&ep->conn_pend_wq);
@@ -951,16 +952,23 @@ __scif_connect(scif_epd_t epd, struct scif_portID *dst, bool non_block)
 		 * If conn_async_state is ASYNC_CONN_INPROGRESS - transition to
 		 * ASYNC_CONN_FLUSH_WORK so that the error status can be collected.
 		 * If the state is already ASYNC_CONN_FLUSH_WORK - then set the error
-		 * to EINPROGRES since some other thread is waiting to collect error status.
+		 * to EINPROGRESS since some other thread is waiting to collect error status.
 		 */
 		if (ep->conn_async_state == ASYNC_CONN_INPROGRESS)
 			ep->conn_async_state = ASYNC_CONN_FLUSH_WORK;
 		else if (ep->conn_async_state == ASYNC_CONN_FLUSH_WORK)
 			err = -EINPROGRESS;
-		else if (non_block && ep->conn_async_state == ASYNC_CONN_IDLE)
-			ep->conn_async_state = ASYNC_CONN_INPROGRESS;
-		else if (!non_block)
+		else {
+			ep->conn_port = *dst;
+			init_waitqueue_head(&ep->sendwq);
+			init_waitqueue_head(&ep->recvwq);
+			init_waitqueue_head(&ep->conwq);
+			init_waitqueue_head(&ep->diswq);
 			ep->conn_async_state = 0;
+
+			if (unlikely(non_block))
+				ep->conn_async_state = ASYNC_CONN_INPROGRESS;
+		}
 		break;
 	}
 
@@ -972,6 +980,15 @@ __scif_connect(scif_epd_t epd, struct scif_portID *dst, bool non_block)
 	ep->sd_state = SCIFDEV_RUNNING;
 	ep->qp_info.qp->magic = SCIFEP_MAGIC;
 	ep->qp_info.qp->ep = (uint64_t)ep;
+	if (ep->conn_async_state == ASYNC_CONN_INPROGRESS) {
+		init_waitqueue_head(&ep->conn_pend_wq);
+		spin_lock(&ms_info.mi_nb_connect_lock);
+		list_add_tail(&ep->conn_list, 
+				&ms_info.mi_nb_connect_list);
+		spin_unlock(&ms_info.mi_nb_connect_lock);
+		err = -EINPROGRESS;
+		queue_work(ms_info.mi_conn_wq, &ms_info.mi_conn_work);
+	}
 connect_simple_unlock1:
 	spin_unlock_irqrestore(&ep->lock, sflags);
 
@@ -984,23 +1001,7 @@ connect_simple_unlock1:
 		ep->conn_async_state = ASYNC_CONN_IDLE;
 		spin_unlock_irqrestore(&ep->lock, sflags);
 	} else {
-		ep->conn_port = *dst;
-		init_waitqueue_head(&ep->sendwq);
-		init_waitqueue_head(&ep->recvwq);
-		init_waitqueue_head(&ep->conwq);
-		init_waitqueue_head(&ep->diswq);
-
-		if (unlikely(non_block)) {
-			init_waitqueue_head(&ep->conn_pend_wq);
-			mutex_lock(&ms_info.mi_nb_connect_lock);
-			list_add_tail(&ep->conn_list, 
-					&ms_info.mi_nb_connect_list);
-			mutex_unlock(&ms_info.mi_nb_connect_lock);
-			queue_work(ms_info.mi_conn_wq, &ms_info.mi_conn_work);
-			err = -EINPROGRESS;
-		} else {
-			err = scif_conn_func(ep);
-		}
+		err = scif_conn_func(ep);
 	}
 	return err;
 }
@@ -2290,12 +2291,6 @@ __scif_get_pages(scif_epd_t epd, off_t offset, size_t len, struct scif_range **p
 		goto error;
 	}
 #endif
-
-#if !defined(_MIC_SCIF_) && defined(CONFIG_ML1OM)
-	if ((err = micscif_rma_list_gtt_map(window, offset, nr_pages))) {
-		goto error;
-	}
-#endif
 	/* Populate the values */
 	(*pages)->cookie = window;
 	(*pages)->nr_pages = nr_pages;
@@ -2404,10 +2399,6 @@ __scif_put_pages(struct scif_range *pages)
 
 	micscif_inc_node_refcnt(ep->remote_dev, 1);
 	mutex_lock(&ep->rma_info.rma_lock);
-
-#if !defined(_MIC_SCIF_) && defined(CONFIG_ML1OM)
-	micscif_rma_list_gtt_unmap(window, window->offset, window->nr_pages);
-#endif
 
 	/* Decrement the ref counts and check for errors */
 	window->get_put_ref_count -= pages->nr_pages;

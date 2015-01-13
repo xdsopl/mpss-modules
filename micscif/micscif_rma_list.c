@@ -10,10 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed Knights Ferry,
  * and the Intel product codenamed Knights Corner, and are not backward
@@ -38,7 +34,6 @@
  */
 
 #include "mic/micscif.h"
-#include "mic/micscif_gtt.h"
 #include "mic/micscif_smpt.h"
 #include "mic/mic_dma_api.h"
 #include "mic/micscif_kmem_cache.h"
@@ -254,235 +249,6 @@ int micscif_query_window(struct micscif_rma_req *req)
 	return -ENXIO;
 }
 
-#ifdef CONFIG_ML1OM
-#ifndef _MIC_SCIF_
-/*
- * micscif_rma_list_gtt_map:
- *
- * Send SCIF_MAP_GTT messages to MIC so that it can map GTT entries
- * and populate window phys_addr field. Used for creating on demand just
- * in time GTT mappings for scif_mmap(..) and scif_get_pages(..).
- * RMA lock must be held.
- */
-int micscif_rma_list_gtt_map(struct reg_range_t *start_window, uint64_t offset, int nr_pages)
-{
-	struct list_head *item, *head;
-	uint64_t end_offset, loop_offset = offset;
-	struct reg_range_t *window;
-	int64_t start_page_nr, loop_nr_pages, nr_pages_left = nr_pages;
-	struct endpt *ep = (struct endpt *)start_window->ep;
-	int i, err = 0;
-	struct nodemsg msg;
-	bool send_msg;
-	mic_ctx_t *mic_ctx;
-
-	might_sleep();
-	BUG_ON(!mutex_is_locked(&ep->rma_info.rma_lock));
-
-	/* Short circuit on demand GTT mappings for loopback/KNC */
-	if (is_self_scifdev(ep->remote_dev))
-		return 0;
-
-	mic_ctx = get_per_dev_ctx(ep->remote_dev->sd_node - 1);
-	if (FAMILY_KNC == mic_ctx->bi_family)
-		return 0;
-
-	msg.src = ep->port;
-	msg.payload[0] = ep->remote_ep;
-	head = (&(start_window->list_member))->prev;
-restart_loop:
-	list_for_each(item, head) {
-		window = list_entry(item, struct reg_range_t, 
-				list_member);
-		end_offset = window->offset +
-			(window->nr_pages << PAGE_SHIFT);
-		start_page_nr = (loop_offset - window->offset) >> PAGE_SHIFT;
-		loop_nr_pages = min((int64_t)((end_offset - loop_offset) >> PAGE_SHIFT),
-				nr_pages_left);
-
-		/* Check if the pages are already mapped */
-		send_msg = false;
-		for (i = start_page_nr;
-			i < (start_page_nr + loop_nr_pages); i++) {
-			if (!window->phys_addr[i] &&
-				!window->page_ref_count[i]) {
-				send_msg = true;
-				window->page_ref_count[i]++;
-			}
-		}
-		/* Send a mapping request if required */
-		if (true == send_msg) {
-			window->gttmap_state = OP_IN_PROGRESS;
-			msg.uop = SCIF_MAP_GTT;
-			msg.payload[1] = window->peer_window;
-			msg.payload[2] = start_page_nr;
-			msg.payload[3] = start_page_nr + loop_nr_pages;
-			get_window_ref_count(window, 1);
-			mutex_unlock(&ep->rma_info.rma_lock);
-			if ((err = micscif_nodeqp_send(ep->remote_dev, &msg, ep))) {
-				mutex_lock(&ep->rma_info.rma_lock);
-				break;
-			}
-retry:
-			err = wait_event_timeout(window->gttmapwq, 
-				window->gttmap_state != OP_IN_PROGRESS, NODE_ALIVE_TIMEOUT);
-			if (!err && scifdev_alive(ep))
-				goto retry;
-			mutex_lock(&ep->rma_info.rma_lock);
-			put_window_ref_count(window, 1);
-			if (!err) {
-				err = -ENODEV;
-				break;
-			}
-			if (err > 0)
-				err = 0;
-			if (OP_FAILED == window->gttmap_state)
-				break;
-			for (i = start_page_nr;
-				i < (start_page_nr + loop_nr_pages); i++)
-				window->phys_addr[i] =
-					get_phys_addr(window->phys_addr[i],
-						ep->remote_dev);
-		}
-		nr_pages_left -= loop_nr_pages;
-		loop_offset += (loop_nr_pages << PAGE_SHIFT);
-		if (!nr_pages_left)
-			break;
-		if (true == send_msg) {
-			head = &(window->list_member);
-			goto restart_loop;
-		}
-	}
-
-	/* Roll back GTT Mappings created partially */
-	if (nr_pages_left) {
-		loop_offset = offset;
-		nr_pages_left = nr_pages;
-
-		/* Start traversing from the previous link in the list */
-		head = ((&start_window->list_member))->prev;
-		list_for_each(item, head) {
-			window = list_entry(item, struct reg_range_t, 
-					list_member);
-			end_offset = window->offset +
-				(window->nr_pages << PAGE_SHIFT);
-			start_page_nr =
-			(loop_offset - window->offset) >> PAGE_SHIFT;
-			loop_nr_pages = min((int64_t)((end_offset - loop_offset) >> PAGE_SHIFT),
-				nr_pages_left);
-
-			/* Check if the pages are already mapped */
-			for (i = start_page_nr;
-				i < (start_page_nr + loop_nr_pages); i++) {
-				if (window->page_ref_count[i]) {
-					window->page_ref_count[i]--;
-					if (!window->page_ref_count[i]) {
-						msg.uop = SCIF_UNMAP_GTT;
-						msg.payload[1] =
-							window->peer_window;
-						msg.payload[2] = i;
-						msg.payload[3] = i + 1;
-						/*
-						 * No error handling for
-						 * Notification messages.
-						 */
-						micscif_nodeqp_send(
-							ep->remote_dev, &msg, ep);
-						window->phys_addr[i] = 0;
-					}
-				}
-			}
-
-			nr_pages_left -= loop_nr_pages;
-			loop_offset += (loop_nr_pages << PAGE_SHIFT);
-			if (!nr_pages_left)
-				break;
-		}
-		BUG_ON(nr_pages_left);
-		if (!err)
-			err = -ENOMEM;
-		goto error;
-	}
-error:
-	if (err)
-		printk(KERN_ERR "%s %d err %d\n", __func__, __LINE__, err);
-	return err;
-}
-
-/*
- * micscif_rma_list_gtt_unmap:
- *
- * Send SCIF_UNMAP_GTT messages to MIC so that it can unmap GTT entries.
- * Used for destroying on demand just in time GTT mappings created during
- * scif_mmap(..) and scif_put_pages(..).
- * RMA lock must be held.
- */
-void micscif_rma_list_gtt_unmap(struct reg_range_t *start_window, uint64_t offset, int nr_pages)
-{
-	struct list_head *item, *tmp, *head;
-	struct nodemsg msg;
-	uint64_t loop_offset = offset, end_offset;
-	int64_t loop_nr_pages, nr_pages_left = nr_pages;
-	struct endpt *ep = (struct endpt *)start_window->ep;
-	struct reg_range_t *window;
-	int i, start_page_nr;
-	mic_ctx_t *mic_ctx;
-
-	/* Short circuit on demand GTT unmappings for loopback/KNC */
-	if (is_self_scifdev(ep->remote_dev))
-		return;
-
-	mic_ctx = get_per_dev_ctx(ep->remote_dev->sd_node - 1);
-	if (FAMILY_KNC == mic_ctx->bi_family)
-		return;
-
-	msg.uop = SCIF_UNMAP_GTT;
-	msg.src = ep->port;
-	msg.payload[0] = ep->remote_ep;
-
-	/* Start traversing from the previous link in the list */
-	head = (&(start_window->list_member))->prev;
-	list_for_each_safe(item, tmp, head) {
-		window = list_entry(item, struct reg_range_t, 
-				list_member);
-		RMA_MAGIC(window);
-		end_offset = window->offset +
-			(window->nr_pages << PAGE_SHIFT);
-		loop_nr_pages = min((int64_t)((end_offset - loop_offset) >> PAGE_SHIFT),
-				nr_pages_left);
-		start_page_nr = (loop_offset - window->offset) >> PAGE_SHIFT;
-
-		/* Check if the pages are already mapped */
-		for (i = start_page_nr;
-			i < (start_page_nr + loop_nr_pages); i++) {
-			if (window->page_ref_count[i]) {
-				window->page_ref_count[i]--;
-				if (!window->page_ref_count[i]) {
-					msg.uop = SCIF_UNMAP_GTT;
-					msg.payload[1] = window->peer_window;
-					msg.payload[2] = i;
-					msg.payload[3] = i + 1;
-					/*
-					 * No error handling for
-					 * Notification messages.
-					 */
-					micscif_nodeqp_send(
-						ep->remote_dev, &msg, ep);
-					window->phys_addr[i] = 0;
-				}
-			}
-		}
-
-		nr_pages_left -= loop_nr_pages;
-		loop_offset += (loop_nr_pages << PAGE_SHIFT);
-		if (!nr_pages_left)
-			break;
-	}
-	BUG_ON(nr_pages_left);
-}
-#endif
-#endif
-
 /*
  * micscif_rma_list_mmap:
  *
@@ -508,10 +274,6 @@ int micscif_rma_list_mmap(struct reg_range_t *start_window,
 	might_sleep();
 	BUG_ON(!mutex_is_locked(&ep->rma_info.rma_lock));
 
-#if !defined(_MIC_SCIF_) && defined(CONFIG_ML1OM)
-	if ((err = micscif_rma_list_gtt_map(start_window, offset, nr_pages)))
-		goto error;
-#endif
 	/* Start traversing from the previous link in the list */
 	head = ((&start_window->list_member))->prev;
 	list_for_each(item, head) {
@@ -601,10 +363,6 @@ void micscif_rma_list_munmap(struct reg_range_t *start_window,
 	struct reg_range_t *window;
 
 	BUG_ON(!mutex_is_locked(&ep->rma_info.rma_lock));
-
-#if !defined(_MIC_SCIF_) && defined(CONFIG_ML1OM)
-	micscif_rma_list_gtt_unmap(start_window, offset, nr_pages);
-#endif
 
 	msg.uop = SCIF_MUNMAP;
 	msg.src = ep->port;

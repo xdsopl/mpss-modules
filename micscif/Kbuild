@@ -6,7 +6,6 @@ ringbuffer-objs := micscif_rb.o
 micscif-objs := micscif_main.o
 micscif-objs += micscif_sysfs.o
 micscif-objs += micscif_smpt.o
-micscif-objs += micscif_gtt.o
 micscif-objs += micscif_intr.o
 micscif-objs += micscif_api.o
 micscif-objs += micscif_fd.o

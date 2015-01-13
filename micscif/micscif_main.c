@@ -10,10 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed Knights Ferry,
  * and the Intel product codenamed Knights Corner, and are not backward
@@ -47,7 +43,6 @@
 #include <mic/micscif.h>
 #include <mic/micscif_smpt.h>
 #include <mic/micscif_rb.h>
-#include <mic/micscif_gtt.h>
 #include <mic/micscif_intr.h>
 //#include <micscif_test.h>
 #include <mic/micscif_nodeqp.h>
@@ -173,12 +168,6 @@ static int micscif_uninit_qp(struct micscif_dev *scifdev)
 	for (i = 0; i < scifdev->n_qpairs; i++) {
 		iounmap(scifdev->qpairs[i].remote_qp);
 		iounmap(scifdev->qpairs[i].outbound_q.rb_base);
-		/* unmap from GTT before freeing */
-		micscif_unmap_gtt_offset(scifdev->qpairs[i].local_buf,
-				scifdev->qpairs[i].inbound_q.size, scifdev);
-		micscif_unmap_gtt_offset(scifdev->qpairs[i].local_qp,
-						sizeof(struct micscif_qp),
-						scifdev);
 		kfree((void *)scifdev->qpairs[i].inbound_q.rb_base);
 	}
 	kfree(scifdev->qpairs);
@@ -274,7 +263,6 @@ static void _micscif_exit(void)
 
 	micscif_uninit_qp(&scif_dev[SCIF_HOST_NODE]);
 	iounmap(scif_dev[SCIF_HOST_NODE].mm_sbox);
-	iounmap(scif_dev[SCIF_HOST_NODE].mm_gtt);
 #if (LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,34))
 	pm_qos_remove_requirement(PM_QOS_CPU_DMA_LATENCY, "micscif");
 #endif
@@ -353,7 +341,7 @@ static int micscif_setup_base(void)
 	spin_lock_init(&ms_info.mi_connlock);
 	spin_lock_init(&ms_info.mi_rmalock);
 	mutex_init(&ms_info.mi_fencelock);
-	mutex_init(&ms_info.mi_nb_connect_lock);
+	spin_lock_init(&ms_info.mi_nb_connect_lock);
 	INIT_LIST_HEAD(&ms_info.mi_uaccept);
 	INIT_LIST_HEAD(&ms_info.mi_listen);
 	INIT_LIST_HEAD(&ms_info.mi_zombie);
@@ -472,20 +460,9 @@ static int micscif_init(void)
 	pr_debug("GTT PHY BASE in GDDR 0x%llx\n", gtt_phys_base);
 	pr_debug("micscif_init(): gtt_phy_base x%llx\n", gtt_phys_base);
 
-#ifdef CONFIG_ML1OM
-	if (!(scif_dev[SCIF_HOST_NODE].mm_gtt =
-		ioremap_cache(gtt_phys_base, MIC_GTT_SIZE))) {
-		result = -ENOMEM;
-		goto unmap_sbox;
-	}
-	micscif_init_gtt(&scif_dev[SCIF_HOST_NODE]);
-#else
-	scif_dev[SCIF_HOST_NODE].mm_gtt = NULL;
-#endif
-
 	/* Get handle to DMA device */
 	if ((result = open_dma_device(0, 0, &mic_dma_handle)))
-		goto unmap_gtt;
+		goto unmap_sbox;
 
 	ms_info.mi_nodeid = scif_id;
 	ms_info.mi_maxid = scif_id;
@@ -536,7 +513,6 @@ static int micscif_init(void)
 	scif_dev[ms_info.mi_nodeid].sd_node = ms_info.mi_nodeid;
 	scif_dev[ms_info.mi_nodeid].sd_numa_node = mic_host_numa_node;
 	scif_dev[ms_info.mi_nodeid].mm_sbox = scif_dev[SCIF_HOST_NODE].mm_sbox;
-	scif_dev[ms_info.mi_nodeid].mm_gtt = scif_dev[SCIF_HOST_NODE].mm_gtt;
 	scif_dev[ms_info.mi_nodeid].scif_ref_cnt = (atomic_long_t) ATOMIC_LONG_INIT(0);
 	scif_dev[ms_info.mi_nodeid].scif_map_ref_cnt = 0;
 	init_waitqueue_head(&scif_dev[ms_info.mi_nodeid].sd_wq);
@@ -591,11 +567,7 @@ destroy_intr_wq:
 	micscif_destroy_interrupts(&scif_dev[SCIF_HOST_NODE]);
 close_dma:
 	close_dma_device(0, &mic_dma_handle);
-unmap_gtt:
-#ifdef CONFIG_ML1OM
-	iounmap(scif_dev[SCIF_HOST_NODE].mm_gtt);
 unmap_sbox:
-#endif
 	iounmap(scif_dev[SCIF_HOST_NODE].mm_sbox);
 error:
 	return result;

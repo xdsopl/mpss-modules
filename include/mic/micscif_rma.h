@@ -10,10 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed Knights Ferry,
  * and the Intel product codenamed Knights Corner, and are not backward
@@ -482,7 +478,7 @@ void micscif_rma_put_task(struct endpt *ep, int nr_pages);
 void micscif_cleanup_rma_for_zombies(int node);
 
 #ifdef _MIC_SCIF_
-int micscif_teardown_proxy_dma(struct endpt *ep);
+void micscif_teardown_proxy_dma(struct endpt *ep);
 #endif
 
 static __always_inline

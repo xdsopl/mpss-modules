@@ -10,10 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed Knights Ferry,
  * and the Intel product codenamed Knights Corner, and are not backward
@@ -453,7 +449,6 @@ md_mic_dma_prep_status_desc(union md_mic_dma_desc *desc, uint64_t data,
 static __always_inline void
 md_mic_dma_prep_gp_desc(union md_mic_dma_desc *desc, uint32_t data, uint64_t dst_phys)
 {
-	
 	KASSERT((desc != 0), ("NULL desc"));
 
 	desc->qwords.qw0 = 0;

@@ -10,10 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed Knights Ferry,
  * and the Intel product codenamed Knights Corner, and are not backward
@@ -38,7 +34,6 @@
  */
 
 #include "mic/micscif.h"
-#include "mic/micscif_gtt.h"
 #include "mic/micscif_smpt.h"
 #include "mic/mic_dma_api.h"
 #include "mic/micscif_kmem_cache.h"
@@ -107,40 +102,8 @@ void *ioremap_remote_gtt(off_t off, struct reg_range_t *window,
 	void *ret;
 	uint64_t page_nr = (off - window->offset) >> PAGE_SHIFT;
 	off_t page_off = off & ~PAGE_MASK;
-	struct endpt *ep = (struct endpt *)window->ep;
-	int err;
-
 	if (!loopback) {
 		dma_addr_t phys =	micscif_get_dma_addr(window, off, NULL, NULL, NULL);
-#ifdef CONFIG_ML1OM
-		if (RMA_ERROR_CODE == phys)
-			return NULL;
-		get_window_ref_count(window, 1);
-		work->gttmap_state = OP_IDLE;
-		work->gtt_offset = -1;
-		init_waitqueue_head(&work->gttmapwq);
-		/*
-		 * Free/request DMA channel only if callee has not
-		 * released the DMA channel.
-		 */
-		if (!work->dma_chan_released)
-			free_dma_channel(ep->rma_info.dma_chan);
-		mutex_unlock(&ep->rma_info.rma_lock);
-#endif
-		err = micscif_map_gtt_dma(&phys, phys, (int)len, dev, ch_num, work, ep);
-#ifdef CONFIG_ML1OM
-		mutex_lock(&ep->rma_info.rma_lock);
-		/*
-		 * Free/request DMA channel only if callee has not
-		 * released the DMA channel.
-		 */
-		if (!work->dma_chan_released)
-			if ((err = request_dma_channel(ep->rma_info.dma_chan)))
-				work->dma_chan_released = true;
-		put_window_ref_count(window, 1);
-#endif
-		if (err)
-			return NULL;
 		/* Ideally there should be a helper to do the +/-1 */
 		ret = get_per_dev_ctx(dev->sd_node - 1)->aper.va + phys;
 	} else {
@@ -163,13 +126,8 @@ void *ioremap_remote(off_t off, struct reg_range_t *window,
 	if (!loopback) {
 		dma_addr_t phys;
 		mic_ctx_t *mic_ctx = get_per_dev_ctx(dev->sd_node - 1);
-#ifdef CONFIG_ML1OM
-			phys = micscif_get_phys_addr(window, off);
-#endif
-#ifdef CONFIG_MK1OM
-			phys = micscif_get_dma_addr(window, off, NULL, index, start_off);
-#endif
-			ret = mic_ctx->aper.va + phys;
+		phys = micscif_get_dma_addr(window, off, NULL, index, start_off);
+		ret = mic_ctx->aper.va + phys;
 	} else {
 		struct page **pages = ((struct reg_range_t *)
 			(window->peer_window))->pinned_pages->pages;
@@ -186,12 +144,6 @@ iounmap_remote(void *virt, size_t size, struct mic_copy_work *work)
 #ifdef _MIC_SCIF_
 	if (!work->loopback)
 		iounmap(virt);
-#else
-#ifdef CONFIG_ML1OM
-	if (OP_COMPLETED == work->gttmap_state && work->gtt_offset != -1) {
-		micscif_unmap_gtt_dma(work);
-	}
-#endif
 #endif
 }
 

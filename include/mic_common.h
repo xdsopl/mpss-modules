@@ -10,10 +10,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * Disclaimer: The codes contained in these modules may be specific to
  * the Intel Software Development Platform codenamed Knights Ferry,
  * and the Intel product codenamed Knights Corner, and are not backward
@@ -355,7 +351,6 @@ typedef struct micpm_ctx
 	struct mutex		msg_mutex;
 	struct list_head	msg_list;
 	uint32_t		pc6_timeout;
-	wait_queue_head_t	dpc3_wq;
 	struct work_struct		pm_close;
 	MIC_STATUS		mic_suspend_state;
 	bool			pc3_enabled;
