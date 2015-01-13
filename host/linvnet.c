@@ -325,7 +325,11 @@ micveth_probe_int(micveth_info_t *veth_info, mic_ctx_t *mic_ctx)
 		desc->rd_valid = 1;
 	}
 
-	if ((dev_veth = alloc_netdev(sizeof(micveth_info_t), "mic%d", micveth_setup)) == NULL) {
+	if ((dev_veth = alloc_netdev(sizeof(micveth_info_t), "mic%d",
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,17,0)
+					NET_NAME_UNKNOWN,
+#endif
+					micveth_setup)) == NULL) {
 		return -ENOMEM;
 	}
 
