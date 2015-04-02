@@ -181,7 +181,11 @@ mic_fasync(int fd, struct file *filp, int on)
 	}
 
 	if (on) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0))
+		__f_setown(filp, task_pid(current), PIDTYPE_PID, 0);
+#else
 		rc = __f_setown(filp, task_pid(current), PIDTYPE_PID, 0);
+#endif
 		filp->private_data = filp;
 	} else {
 		filp->private_data = NULL;
