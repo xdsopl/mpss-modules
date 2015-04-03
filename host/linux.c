@@ -151,7 +151,7 @@ static ssize_t
 mic_read(struct file * filp, char __user *buf,
 		size_t count, loff_t *pos)
 {
-	dev_t dev = filp->f_dentry->d_inode->i_rdev;
+	dev_t dev = file_inode(filp)->i_rdev;
 	if (MINOR(dev) == 2)
 		return mic_psmi_read(filp, buf, count, pos);
 
@@ -164,7 +164,7 @@ mic_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	dev_t dev;
 	int status = 0;
 
-	dev = filp->f_dentry->d_inode->i_rdev;
+	dev = file_inode(filp)->i_rdev;
 	if (MINOR(dev) == 1)
 		return scif_process_ioctl(filp, cmd, arg);
 
@@ -197,7 +197,7 @@ mic_fasync(int fd, struct file *filp, int on)
 int
 mic_mmap(struct file *f, struct vm_area_struct *vma)
 {
-	dev_t dev = f->f_dentry->d_inode->i_rdev;
+	dev_t dev = file_inode(f)->i_rdev;
 	if (MINOR(dev) == 1)
 		return micscif_mmap(f, vma);
 
@@ -207,7 +207,7 @@ mic_mmap(struct file *f, struct vm_area_struct *vma)
 unsigned int
 mic_poll(struct file *f, poll_table *wait)
 {
-	dev_t dev = f->f_dentry->d_inode->i_rdev;
+	dev_t dev = file_inode(f)->i_rdev;
 	if (MINOR(dev) == 1)
 		return micscif_poll(f, wait);
 
@@ -217,7 +217,7 @@ mic_poll(struct file *f, poll_table *wait)
 int
 mic_flush(struct file *f, fl_owner_t id)
 {
-	dev_t dev = f->f_dentry->d_inode->i_rdev;
+	dev_t dev = file_inode(f)->i_rdev;
 	if (MINOR(dev) == 1)
 		return micscif_flush(f, id);
 
