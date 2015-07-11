@@ -2568,7 +2568,7 @@ micscif_nodeqp_intrhandler(struct micscif_dev *scifdev, struct micscif_qp *qp)
 	 * P2P connections to provide better Node QP responsiveness
 	 * in anticipation of P2P Proxy DMA requests for performance.
 	 */
-	if (is_p2p_scifdev(scifdev) &&
+	if (scifdev->sd_proxy_dma_reads &&
 		scifdev->num_active_conn &&
 		SCIFDEV_STOPPED != scifdev->sd_state) {
 		queue_work(scifdev->sd_intr_wq, &scifdev->sd_intr_bh);

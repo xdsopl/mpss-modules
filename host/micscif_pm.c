@@ -177,7 +177,7 @@ mic_pm_send(mic_ctx_t *mic_ctx, void *msg, uint32_t len)
 	err = scif_send(epd, msg, len, PM_SEND_MODE);
 	/*scif_send returns the number of bytes returned on success */
 	if(err <= 0) {
-		printk("scif_send to node: %d port: %d failed with error %d\n", 
+		PM_DEBUG("scif_send to node: %d port: %d failed with error %d\n",
 				epd->peer.node, epd->peer.port, err);
 	} else {
 		PM_DEBUG("Bytes sent = %d\n",err);
